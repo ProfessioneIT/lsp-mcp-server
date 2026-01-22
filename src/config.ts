@@ -2,58 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import type { Config, LSPServerConfig } from './types.js';
-import { DEFAULT_CONFIG } from './constants.js';
-
-// ============================================================================
-// Default Server Configurations
-// ============================================================================
-
-/**
- * Built-in language server configurations.
- * These provide sensible defaults for common language servers.
- */
-const DEFAULT_SERVERS: LSPServerConfig[] = [
-  {
-    id: 'typescript',
-    extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
-    languageIds: ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'],
-    command: 'typescript-language-server',
-    args: ['--stdio'],
-    rootPatterns: ['package.json', 'tsconfig.json', 'jsconfig.json'],
-  },
-  {
-    id: 'python',
-    extensions: ['.py', '.pyi'],
-    languageIds: ['python'],
-    command: 'pylsp',
-    args: [],
-    rootPatterns: ['pyproject.toml', 'setup.py', 'requirements.txt', '.git'],
-  },
-  {
-    id: 'rust',
-    extensions: ['.rs'],
-    languageIds: ['rust'],
-    command: 'rust-analyzer',
-    args: [],
-    rootPatterns: ['Cargo.toml'],
-  },
-  {
-    id: 'go',
-    extensions: ['.go'],
-    languageIds: ['go'],
-    command: 'gopls',
-    args: [],
-    rootPatterns: ['go.mod', 'go.sum'],
-  },
-  {
-    id: 'java',
-    extensions: ['.java'],
-    languageIds: ['java'],
-    command: 'jdtls',
-    args: [],
-    rootPatterns: ['pom.xml', 'build.gradle', '.project'],
-  },
-];
+import { DEFAULT_CONFIG, DEFAULT_SERVERS } from './constants.js';
 
 // ============================================================================
 // Configuration Loading

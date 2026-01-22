@@ -37,6 +37,38 @@ export const DEFAULT_SERVERS: LSPServerConfig[] = [
     args: ['serve'],
     rootPatterns: ['go.mod', 'go.work'],
   },
+  {
+    id: 'cpp',
+    extensions: ['.c', '.h', '.cpp', '.hpp', '.cc', '.hh', '.cxx', '.hxx', '.c++', '.h++'],
+    languageIds: ['c', 'cpp'],
+    command: 'clangd',
+    args: ['--background-index'],
+    rootPatterns: ['compile_commands.json', 'CMakeLists.txt', 'Makefile', '.clangd'],
+  },
+  {
+    id: 'ruby',
+    extensions: ['.rb', '.rake', '.gemspec'],
+    languageIds: ['ruby'],
+    command: 'solargraph',
+    args: ['stdio'],
+    rootPatterns: ['Gemfile', '.ruby-version', 'Rakefile'],
+  },
+  {
+    id: 'php',
+    extensions: ['.php', '.phtml', '.php3', '.php4', '.php5', '.phps'],
+    languageIds: ['php'],
+    command: 'intelephense',
+    args: ['--stdio'],
+    rootPatterns: ['composer.json', 'index.php', '.php-version'],
+  },
+  {
+    id: 'elixir',
+    extensions: ['.ex', '.exs', '.heex', '.leex', '.sface'],
+    languageIds: ['elixir', 'eelixir', 'phoenix-heex', 'surface'],
+    command: 'elixir-ls',
+    args: [],
+    rootPatterns: ['mix.exs', '.formatter.exs'],
+  },
 ];
 
 // ============================================================================
@@ -60,6 +92,10 @@ export const INSTALL_COMMANDS: Record<string, string> = {
   python: 'pip install python-lsp-server',
   rust: 'rustup component add rust-analyzer',
   go: 'go install golang.org/x/tools/gopls@latest',
+  cpp: 'apt install clangd  # or: brew install llvm',
+  ruby: 'gem install solargraph',
+  php: 'npm install -g intelephense',
+  elixir: 'mix escript.install hex elixir_ls  # or download from https://github.com/elixir-lsp/elixir-ls/releases',
 };
 
 // ============================================================================

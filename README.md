@@ -26,7 +26,15 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 ## Features
 
 - **14 MCP Tools** for comprehensive code intelligence
-- **Multi-language Support** - TypeScript, Python, Rust, Go out of the box
+- **8 Languages Supported** out of the box:
+  - TypeScript / JavaScript
+  - Python
+  - Rust
+  - Go
+  - C / C++
+  - Ruby
+  - PHP
+  - Elixir
 - **Multi-root Workspace** - Proper monorepo support with per-workspace server instances
 - **Push-based Diagnostics** - Real-time error/warning caching from language servers
 - **Human-friendly Positions** - All line/column numbers are 1-indexed
@@ -53,6 +61,23 @@ rustup component add rust-analyzer
 
 # Go
 go install golang.org/x/tools/gopls@latest
+
+# C/C++
+# Ubuntu/Debian:
+sudo apt install clangd
+# macOS:
+brew install llvm
+
+# Ruby
+gem install solargraph
+
+# PHP
+npm install -g intelephense
+
+# Elixir
+mix escript.install hex elixir_ls
+# Or download pre-built releases from:
+# https://github.com/elixir-lsp/elixir-ls/releases
 ```
 
 ### Install lsp-mcp-server
@@ -376,6 +401,23 @@ Output:
 ```
 
 **Example prompt:** "Stop the Python language server"
+
+## Supported Languages
+
+The following languages are supported out of the box:
+
+| Language | Server | Command | File Extensions | Root Patterns |
+|----------|--------|---------|-----------------|---------------|
+| **TypeScript/JavaScript** | typescript-language-server | `typescript-language-server --stdio` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` | `tsconfig.json`, `jsconfig.json`, `package.json` |
+| **Python** | pylsp | `pylsp` | `.py`, `.pyi` | `pyproject.toml`, `setup.py`, `requirements.txt`, `Pipfile` |
+| **Rust** | rust-analyzer | `rust-analyzer` | `.rs` | `Cargo.toml` |
+| **Go** | gopls | `gopls serve` | `.go` | `go.mod`, `go.work` |
+| **C/C++** | clangd | `clangd --background-index` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx` | `compile_commands.json`, `CMakeLists.txt`, `Makefile` |
+| **Ruby** | solargraph | `solargraph stdio` | `.rb`, `.rake`, `.gemspec` | `Gemfile`, `.ruby-version`, `Rakefile` |
+| **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml` | `composer.json`, `index.php` |
+| **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex` | `mix.exs`, `.formatter.exs` |
+
+You can add additional languages by providing a custom configuration (see [Configuration](#configuration)).
 
 ## Configuration
 
