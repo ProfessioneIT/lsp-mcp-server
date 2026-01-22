@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **lsp-mcp-server** is an MCP (Model Context Protocol) server that bridges Claude Code to Language Server Protocol (LSP) servers. It enables semantic code intelligence capabilities like go-to-definition, find-references, hover information, workspace symbol search, diagnostics, completion, and rename.
 
-**Current State:** Specification-only. The project contains a detailed development spec at `specs/lsp-mcp-server-spec.md` but no implementation yet.
+**Current State:** Fully implemented. The project contains a working MCP server with all 14 tools.
 
 ## Build Commands
 
@@ -45,36 +45,40 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
 - **1-indexed positions:** All tool inputs/outputs use 1-indexed line/column for human readability
 - **UTF-16 handling:** Proper conversion for emoji and non-BMP characters via position encoding negotiation
 
-### Planned Source Structure
+### Source Structure
 
 ```
 src/
-├── index.ts                    # MCP server entry point
-├── types.ts                    # TypeScript interfaces
-├── constants.ts                # Configuration defaults
+├── index.ts                    # MCP server entry point with tool registration
+├── types.ts                    # TypeScript interfaces and error types
+├── constants.ts                # Configuration defaults, symbol kinds, severities
+├── config.ts                   # Configuration loading and defaults
 ├── utils/
 │   ├── position.ts             # UTF-16 <-> UTF-32 position conversion
-│   ├── uri.ts                  # File path <-> URI conversion, symlink handling
-│   └── workspace.ts            # Workspace root detection
+│   ├── uri.ts                  # File path <-> URI conversion
+│   ├── workspace.ts            # Workspace root detection
+│   └── logger.ts               # Logging utilities
 ├── tools/                      # MCP tool implementations (14 tools)
-│   ├── definition.ts           # lsp_goto_definition
-│   ├── type-definition.ts      # lsp_goto_type_definition
-│   ├── references.ts           # lsp_find_references
-│   ├── implementations.ts      # lsp_find_implementations
-│   ├── hover.ts                # lsp_hover
-│   ├── signature-help.ts       # lsp_signature_help
+│   ├── definition.ts           # lsp_goto_definition, lsp_goto_type_definition
+│   ├── references.ts           # lsp_find_references, lsp_find_implementations
+│   ├── hover.ts                # lsp_hover, lsp_signature_help
 │   ├── symbols.ts              # lsp_document_symbols, lsp_workspace_symbols
 │   ├── diagnostics.ts          # lsp_diagnostics
 │   ├── completion.ts           # lsp_completions
-│   └── rename.ts               # lsp_rename
+│   ├── rename.ts               # lsp_rename
+│   ├── server.ts               # lsp_server_status, lsp_start_server, lsp_stop_server
+│   ├── utils.ts                # Shared tool utilities
+│   ├── context.ts              # Tool context (shared services)
+│   └── index.ts                # Tool exports
 ├── services/
 │   ├── lsp-client.ts           # LSP client wrapper (JSON-RPC, initialization)
 │   ├── connection-manager.ts   # Multi-instance pool, routing by language + root
 │   ├── document-manager.ts     # didOpen/didChange/didClose, content caching
 │   ├── diagnostics-cache.ts    # Stores pushed diagnostics
-│   └── language-detector.ts    # File extension to language server mapping
+│   ├── language-detector.ts    # File extension to language server mapping
+│   └── index.ts                # Service exports
 └── schemas/
-    └── tool-schemas.ts         # Zod validation schemas
+    └── tool-schemas.ts         # Zod validation schemas for all tools
 ```
 
 ### MCP Tools (14 total)

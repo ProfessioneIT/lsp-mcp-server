@@ -1,0 +1,48 @@
+{
+  "name": "lsp-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server bridging Claude Code to Language Server Protocol servers",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "lsp-mcp-server": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-jsonrpc": "^8.2.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.0.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "lsp",
+    "language-server",
+    "claude",
+    "code-intelligence"
+  ],
+  "license": "MIT"
+}
