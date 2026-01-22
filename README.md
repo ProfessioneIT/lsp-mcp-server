@@ -111,9 +111,9 @@ lsp-mcp-server
 
 ### 1. Add to Claude Code MCP Settings
 
-Add the server to your Claude Code MCP configuration file:
+Create or edit the `.mcp.json` file in your home directory:
 
-**Location:** `~/.config/claude-code/mcp_settings.json` (Linux/macOS) or `%APPDATA%\claude-code\mcp_settings.json` (Windows)
+**Location:** `~/.mcp.json` (user-level) or `.mcp.json` in your project root (project-level)
 
 ```json
 {
@@ -129,7 +129,7 @@ Add the server to your Claude Code MCP configuration file:
 }
 ```
 
-**Or if installed globally:**
+**Or if installed globally via npm link:**
 
 ```json
 {
