@@ -253,6 +253,7 @@ export interface LSPErrorDetails {
   file_path?: string;
   position?: { line: number; column: number };
   install_command?: string;
+  original_error?: string;
 }
 
 export class LSPError extends Error {

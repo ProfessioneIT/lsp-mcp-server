@@ -262,11 +262,12 @@ export class LSPClientImpl implements ILSPClient {
       return result;
     } catch (error) {
       this.cleanup();
+      const errorMessage = error instanceof Error ? error.message : String(error);
       throw new LSPError(
         LSPErrorCode.SERVER_START_FAILED,
-        `Failed to initialize language server: ${this.config.id}`,
+        `Failed to initialize language server: ${this.config.id}: ${errorMessage}`,
         'Check that the language server is installed correctly and supports the LSP protocol.',
-        { server_id: this.config.id }
+        { server_id: this.config.id, original_error: errorMessage }
       );
     }
   }
