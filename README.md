@@ -20,10 +20,10 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 - **Smart Search** - Comprehensive symbol analysis in a single call
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌───────────────────┐
+┌─────────────┐      ┌──────────────────┐      ┌───────────────────┐
 │ Claude Code │────▶│  lsp-mcp-server  │────▶│ Language Servers  │
 │   (MCP)     │◀────│   (this tool)    │◀────│ (TypeScript, etc) │
-└─────────────┘     └──────────────────┘     └───────────────────┘
+└─────────────┘      └──────────────────┘      └───────────────────┘
       stdio              stdio/JSON-RPC            stdio
 ```
 
