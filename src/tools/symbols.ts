@@ -77,6 +77,7 @@ export async function handleDocumentSymbols(
 
 /**
  * Handle lsp_workspace_symbols tool call.
+ * Queries ALL active language servers and merges results for polyglot projects.
  */
 export async function handleWorkspaceSymbols(
   input: WorkspaceSymbolsInput
@@ -85,8 +86,7 @@ export async function handleWorkspaceSymbols(
 
   const ctx = getToolContext();
 
-  // Get a client - we'll use the first available one since workspace symbols
-  // searches across the whole workspace
+  // Get all active servers
   const servers = ctx.connectionManager.listActiveServers();
   if (servers.length === 0) {
     return {
@@ -97,53 +97,78 @@ export async function handleWorkspaceSymbols(
     };
   }
 
-  const server = servers[0];
-  if (!server || !server.client) {
-    return {
-      symbols: [],
-      total_count: 0,
-      returned_count: 0,
-      has_more: false,
-    };
-  }
+  // Query all active servers in parallel
+  const allResults = await Promise.all(
+    servers
+      .filter(server => server.client && server.status === 'running')
+      .map(async (server) => {
+        try {
+          return await server.client!.workspaceSymbols(query);
+        } catch {
+          // Ignore errors from individual servers
+          return null;
+        }
+      })
+  );
 
-  // Call LSP
-  const result = await server.client.workspaceSymbols(query);
-
-  if (!result || result.length === 0) {
-    return {
-      symbols: [],
-      total_count: 0,
-      returned_count: 0,
-      has_more: false,
-    };
-  }
-
-  // Convert and filter
+  // Merge results from all servers
   const allSymbols: WorkspaceSymbolResult[] = [];
+  const seenSymbols = new Set<string>(); // Deduplicate by path:line:name
 
-  for (const symbol of result) {
-    // Filter by kind if specified
-    if (!matchesSymbolKind(symbol.kind, kinds)) {
+  for (const result of allResults) {
+    if (!result || result.length === 0) {
       continue;
     }
 
-    // Get location - SymbolInformation always has location with range
-    const location = symbol.location;
-    const symbolResult: WorkspaceSymbolResult = {
-      name: symbol.name,
-      kind: getSymbolKindName(symbol.kind),
-      path: uriToPath(location.uri),
-      line: 'range' in location ? location.range.start.line + 1 : 1,
-      column: 'range' in location ? location.range.start.character + 1 : 1,
-    };
+    for (const symbol of result) {
+      // Filter by kind if specified
+      if (!matchesSymbolKind(symbol.kind, kinds)) {
+        continue;
+      }
 
-    if (symbol.containerName) {
-      symbolResult.container_name = symbol.containerName;
+      // Get location
+      const location = symbol.location;
+      const path = uriToPath(location.uri);
+      const line = 'range' in location ? location.range.start.line + 1 : 1;
+      const column = 'range' in location ? location.range.start.character + 1 : 1;
+
+      // Deduplicate
+      const key = `${path}:${line}:${symbol.name}`;
+      if (seenSymbols.has(key)) {
+        continue;
+      }
+      seenSymbols.add(key);
+
+      const symbolResult: WorkspaceSymbolResult = {
+        name: symbol.name,
+        kind: getSymbolKindName(symbol.kind),
+        path,
+        line,
+        column,
+      };
+
+      if (symbol.containerName) {
+        symbolResult.container_name = symbol.containerName;
+      }
+
+      allSymbols.push(symbolResult);
     }
-
-    allSymbols.push(symbolResult);
   }
+
+  // Sort by relevance (exact matches first, then prefix matches, then others)
+  allSymbols.sort((a, b) => {
+    const aExact = a.name.toLowerCase() === query.toLowerCase();
+    const bExact = b.name.toLowerCase() === query.toLowerCase();
+    if (aExact && !bExact) return -1;
+    if (!aExact && bExact) return 1;
+
+    const aPrefix = a.name.toLowerCase().startsWith(query.toLowerCase());
+    const bPrefix = b.name.toLowerCase().startsWith(query.toLowerCase());
+    if (aPrefix && !bPrefix) return -1;
+    if (!aPrefix && bPrefix) return 1;
+
+    return a.name.localeCompare(b.name);
+  });
 
   // Apply limit
   const limited = allSymbols.slice(0, limit);

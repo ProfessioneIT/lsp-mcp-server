@@ -13,7 +13,11 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 - **Diagnostics** - Access errors, warnings, and hints from the language server
 - **Symbol Search** - Search for symbols in documents or across the workspace
 - **Rename** - Safely rename symbols across the entire codebase
-- **And more...**
+- **Code Actions** - Apply quick fixes, refactorings, and organize imports
+- **Call Hierarchy** - See who calls a function and what it calls
+- **Type Hierarchy** - Explore class inheritance and interface implementations
+- **Format Document** - Format code using the language server's formatter
+- **Smart Search** - Comprehensive symbol analysis in a single call
 
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌───────────────────┐
@@ -25,7 +29,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 
 ## Features
 
-- **14 MCP Tools** for comprehensive code intelligence
+- **19 MCP Tools** for comprehensive code intelligence
 - **8 Languages Supported** out of the box:
   - TypeScript / JavaScript
   - Python
@@ -354,6 +358,108 @@ Output:
 
 **Example prompt:** "Rename the function 'getUserData' to 'fetchUserData' at line 20 in /project/src/api.ts (dry run first)"
 
+#### `lsp_code_actions`
+Get available code actions (refactorings, quick fixes) at a position or range.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - line: Start line number (1-indexed)
+  - column: Start column number (1-indexed)
+  - end_line: End line number (optional, defaults to start line)
+  - end_column: End column number (optional, defaults to start column)
+  - kinds: Filter by action kinds (optional): quickfix, refactor, refactor.extract, refactor.inline, source.organizeImports, etc.
+  - apply: Apply the action (default: false)
+  - action_index: Index of action to apply (default: 0)
+
+Output:
+  - actions: Array of available code actions with title, kind, and edits
+  - applied: Whether an action was applied
+```
+
+**Example prompt:** "What refactoring options are available for the function at line 50 in /project/src/utils.ts?"
+
+#### `lsp_format_document`
+Format a document using the language server's formatting capabilities.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - tab_size: Spaces per tab (default: 2)
+  - insert_spaces: Use spaces instead of tabs (default: true)
+  - apply: Apply formatting to file (default: false)
+
+Output:
+  - edits: Array of formatting edits with range and new_text
+  - edits_count: Number of edits
+  - applied: Whether edits were applied
+```
+
+**Example prompt:** "Format /project/src/messy-file.ts using the language server"
+
+### Hierarchy Tools
+
+#### `lsp_call_hierarchy`
+Get the call hierarchy for a function - who calls it and what it calls.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - line: Line number (1-indexed)
+  - column: Column number (1-indexed)
+  - direction: 'incoming' (callers), 'outgoing' (callees), or 'both' (default: 'both')
+
+Output:
+  - item: The call hierarchy item at the position
+  - incoming_calls: Array of functions that call this function
+  - outgoing_calls: Array of functions this function calls
+```
+
+**Example prompt:** "Show me all functions that call handleRequest at line 100 in /project/src/server.ts"
+
+#### `lsp_type_hierarchy`
+Get the type hierarchy for a class or interface - supertypes and subtypes.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - line: Line number (1-indexed)
+  - column: Column number (1-indexed)
+  - direction: 'supertypes' (parents), 'subtypes' (children), or 'both' (default: 'both')
+
+Output:
+  - item: The type hierarchy item at the position
+  - supertypes: Array of parent types/interfaces
+  - subtypes: Array of child types/implementations
+```
+
+**Example prompt:** "What classes implement the Repository interface at line 5 in /project/src/types.ts?"
+
+### Combined Tools
+
+#### `lsp_smart_search`
+Comprehensive symbol search combining multiple LSP operations in one call.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - line: Line number (1-indexed)
+  - column: Column number (1-indexed)
+  - include: Array of what to include: 'hover', 'definition', 'references', 'implementations', 'incoming_calls', 'outgoing_calls' (default: ['hover', 'definition', 'references'])
+  - references_limit: Maximum references to return (default: 20)
+
+Output:
+  - symbol_name: Name of the symbol
+  - hover: Type information and documentation
+  - definition: Where the symbol is defined
+  - references: All usages of the symbol
+  - implementations: Implementations (for interfaces)
+  - incoming_calls: Functions that call this
+  - outgoing_calls: Functions this calls
+```
+
+**Example prompt:** "Give me a complete analysis of the processData function at line 75 in /project/src/processor.ts - definition, all references, and what calls it"
+
 ### Server Management Tools
 
 #### `lsp_server_status`
@@ -528,6 +634,30 @@ Each server in the `servers` array has:
 ### Completions
 
 > "What methods are available on the object at line 30, column 5 in /project/src/app.ts? Use lsp_completions"
+
+### Code Actions and Refactoring
+
+> "What refactoring options are available for the code selection from line 20 to 35 in /project/src/utils.ts?"
+
+> "Organize imports in /project/src/components/App.tsx using lsp_code_actions with kinds filter for source.organizeImports"
+
+> "Apply the quick fix for the error at line 15 in /project/src/api.ts"
+
+### Understanding Code Flow
+
+> "Show me the call hierarchy for the processOrder function at line 50 in /project/src/orders.ts - I want to see what calls it"
+
+> "What does the authenticate function call? Use lsp_call_hierarchy with outgoing direction"
+
+> "Show me the type hierarchy for the BaseRepository class - what are its subtypes?"
+
+### Comprehensive Analysis
+
+> "Give me a complete analysis of the UserService class at line 10 in /project/src/services/user.ts - I want definition, all references, implementations, and call hierarchy. Use lsp_smart_search"
+
+### Formatting
+
+> "Format /project/src/unformatted.ts using the language server (preview first, don't apply)"
 
 ## Troubleshooting
 

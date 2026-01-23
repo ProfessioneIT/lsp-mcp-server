@@ -271,6 +271,46 @@ export const DIAGNOSTIC_SEVERITY_NAMES: Record<number, 'error' | 'warning' | 'in
 };
 
 // ============================================================================
+// Code Action Kinds
+// ============================================================================
+
+/**
+ * Standard code action kinds from LSP specification.
+ * Used to filter and categorize available code actions.
+ */
+export const CODE_ACTION_KINDS = {
+  /** Empty string means all kinds */
+  Empty: '',
+  /** Quick fix for diagnostics (errors, warnings) */
+  QuickFix: 'quickfix',
+  /** Base kind for all refactoring actions */
+  Refactor: 'refactor',
+  /** Extract method/function/variable */
+  RefactorExtract: 'refactor.extract',
+  /** Inline method/function/variable */
+  RefactorInline: 'refactor.inline',
+  /** Rewrite (e.g., convert arrow function to regular function) */
+  RefactorRewrite: 'refactor.rewrite',
+  /** Move code to another location */
+  RefactorMove: 'refactor.move',
+  /** Base kind for source actions */
+  Source: 'source',
+  /** Organize imports */
+  SourceOrganizeImports: 'source.organizeImports',
+  /** Fix all auto-fixable issues */
+  SourceFixAll: 'source.fixAll',
+  /** Add missing imports */
+  SourceAddMissingImports: 'source.addMissingImports',
+  /** Remove unused imports */
+  SourceRemoveUnusedImports: 'source.removeUnusedImports',
+  /** Sort imports */
+  SourceSortImports: 'source.sortImports',
+} as const;
+
+/** Array of all code action kinds for validation */
+export const CODE_ACTION_KIND_VALUES = Object.values(CODE_ACTION_KINDS);
+
+// ============================================================================
 // Environment Variables
 // ============================================================================
 

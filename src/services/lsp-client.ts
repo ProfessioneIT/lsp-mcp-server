@@ -21,12 +21,16 @@ import {
   PrepareRenameRequest,
   RenameRequest,
   PublishDiagnosticsNotification,
+  CodeActionRequest,
+  DocumentFormattingRequest,
   type TextDocumentPositionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
   type WorkspaceSymbolParams,
   type CompletionParams,
   type RenameParams,
+  type CodeActionParams,
+  type DocumentFormattingParams,
   type ServerCapabilities,
   type InitializeResult,
   type TextDocumentItem,
@@ -46,6 +50,15 @@ import {
   type Range,
   type TextDocumentIdentifier,
   type VersionedTextDocumentIdentifier,
+  type CodeAction,
+  type Command,
+  type CodeActionKind,
+  type CallHierarchyItem,
+  type CallHierarchyIncomingCall,
+  type CallHierarchyOutgoingCall,
+  type TypeHierarchyItem,
+  type TextEdit,
+  type FormattingOptions,
 } from 'vscode-languageserver-protocol';
 
 import type { LSPClient as ILSPClient, LSPServerConfig } from '../types.js';
@@ -224,6 +237,35 @@ export class LSPClientImpl implements ILSPClient {
           },
           publishDiagnostics: {
             relatedInformation: true,
+          },
+          codeAction: {
+            dynamicRegistration: false,
+            codeActionLiteralSupport: {
+              codeActionKind: {
+                valueSet: [
+                  'quickfix',
+                  'refactor',
+                  'refactor.extract',
+                  'refactor.inline',
+                  'refactor.rewrite',
+                  'source',
+                  'source.organizeImports',
+                  'source.fixAll',
+                ],
+              },
+            },
+            resolveSupport: {
+              properties: ['edit'],
+            },
+          },
+          callHierarchy: {
+            dynamicRegistration: false,
+          },
+          typeHierarchy: {
+            dynamicRegistration: false,
+          },
+          formatting: {
+            dynamicRegistration: false,
           },
         },
         workspace: {
@@ -471,6 +513,104 @@ export class LSPClientImpl implements ILSPClient {
       newName,
     };
     return this.sendRequest(RenameRequest.type, params);
+  }
+
+  // ============================================================================
+  // Code Actions
+  // ============================================================================
+
+  async codeActions(
+    uri: string,
+    range: Range,
+    diagnostics: Diagnostic[],
+    kinds?: string[]
+  ): Promise<(CodeAction | Command)[] | null> {
+    this.ensureCapability('codeActionProvider', 'codeAction');
+    const params: CodeActionParams = {
+      textDocument: { uri },
+      range,
+      context: {
+        diagnostics,
+        only: kinds as CodeActionKind[],
+      },
+    };
+    return this.sendRequest(CodeActionRequest.type, params);
+  }
+
+  // ============================================================================
+  // Call Hierarchy
+  // ============================================================================
+
+  async prepareCallHierarchy(
+    uri: string,
+    position: Position
+  ): Promise<CallHierarchyItem[] | null> {
+    this.ensureCapability('callHierarchyProvider', 'callHierarchy');
+    const params: TextDocumentPositionParams = {
+      textDocument: { uri },
+      position,
+    };
+    return this.sendRequest({ method: 'textDocument/prepareCallHierarchy' }, params);
+  }
+
+  async callHierarchyIncomingCalls(
+    item: CallHierarchyItem
+  ): Promise<CallHierarchyIncomingCall[] | null> {
+    this.ensureCapability('callHierarchyProvider', 'callHierarchy');
+    return this.sendRequest({ method: 'callHierarchy/incomingCalls' }, { item });
+  }
+
+  async callHierarchyOutgoingCalls(
+    item: CallHierarchyItem
+  ): Promise<CallHierarchyOutgoingCall[] | null> {
+    this.ensureCapability('callHierarchyProvider', 'callHierarchy');
+    return this.sendRequest({ method: 'callHierarchy/outgoingCalls' }, { item });
+  }
+
+  // ============================================================================
+  // Type Hierarchy
+  // ============================================================================
+
+  async prepareTypeHierarchy(
+    uri: string,
+    position: Position
+  ): Promise<TypeHierarchyItem[] | null> {
+    this.ensureCapability('typeHierarchyProvider', 'typeHierarchy');
+    const params: TextDocumentPositionParams = {
+      textDocument: { uri },
+      position,
+    };
+    return this.sendRequest({ method: 'textDocument/prepareTypeHierarchy' }, params);
+  }
+
+  async typeHierarchySupertypes(
+    item: TypeHierarchyItem
+  ): Promise<TypeHierarchyItem[] | null> {
+    this.ensureCapability('typeHierarchyProvider', 'typeHierarchy');
+    return this.sendRequest({ method: 'typeHierarchy/supertypes' }, { item });
+  }
+
+  async typeHierarchySubtypes(
+    item: TypeHierarchyItem
+  ): Promise<TypeHierarchyItem[] | null> {
+    this.ensureCapability('typeHierarchyProvider', 'typeHierarchy');
+    return this.sendRequest({ method: 'typeHierarchy/subtypes' }, { item });
+  }
+
+  // ============================================================================
+  // Document Formatting
+  // ============================================================================
+
+  async formatDocument(
+    uri: string,
+    options: FormattingOptions
+  ): Promise<TextEdit[] | null> {
+    this.ensureCapability('documentFormattingProvider', 'formatting');
+    const params: DocumentFormattingParams = {
+      textDocument: { uri },
+      options,
+    };
+    return this.sendRequest(DocumentFormattingRequest.type, params);
   }
 
   // ============================================================================

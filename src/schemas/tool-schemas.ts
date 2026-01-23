@@ -155,6 +155,110 @@ export const StopServerSchema = z.object({
 }).strict();
 
 // ============================================================================
+// Code Actions Schema
+// ============================================================================
+
+export const CodeActionsSchema = z.object({
+  file_path: FilePathSchema,
+  start_line: LineSchema.describe('Start line of the range (1-indexed)'),
+  start_column: ColumnSchema.describe('Start column of the range (1-indexed)'),
+  end_line: z.number()
+    .int()
+    .min(1)
+    .optional()
+    .describe('End line of the range (1-indexed). Defaults to start_line.'),
+  end_column: z.number()
+    .int()
+    .min(1)
+    .optional()
+    .describe('End column of the range (1-indexed). Defaults to start_column.'),
+  kinds: z.array(z.enum([
+    'quickfix',
+    'refactor',
+    'refactor.extract',
+    'refactor.inline',
+    'refactor.rewrite',
+    'source',
+    'source.organizeImports',
+    'source.fixAll',
+  ]))
+    .optional()
+    .describe('Filter actions by kind (e.g., "quickfix", "refactor.extract")'),
+}).strict();
+
+// ============================================================================
+// Call Hierarchy Schema
+// ============================================================================
+
+export const CallHierarchySchema = z.object({
+  file_path: FilePathSchema,
+  line: LineSchema,
+  column: ColumnSchema,
+  direction: z.enum(['incoming', 'outgoing', 'both'])
+    .default('both')
+    .describe('Direction of calls to retrieve: incoming (callers), outgoing (callees), or both'),
+}).strict();
+
+// ============================================================================
+// Type Hierarchy Schema
+// ============================================================================
+
+export const TypeHierarchySchema = z.object({
+  file_path: FilePathSchema,
+  line: LineSchema,
+  column: ColumnSchema,
+  direction: z.enum(['supertypes', 'subtypes', 'both'])
+    .default('both')
+    .describe('Direction of hierarchy: supertypes (parents), subtypes (children), or both'),
+}).strict();
+
+// ============================================================================
+// Format Document Schema
+// ============================================================================
+
+export const FormatDocumentSchema = z.object({
+  file_path: FilePathSchema,
+  tab_size: z.number()
+    .int()
+    .min(1)
+    .max(8)
+    .default(2)
+    .describe('Size of a tab in spaces'),
+  insert_spaces: z.boolean()
+    .default(true)
+    .describe('Prefer spaces over tabs'),
+  apply: z.boolean()
+    .default(false)
+    .describe('If true, apply formatting changes to the file. If false, only preview changes.'),
+}).strict();
+
+// ============================================================================
+// Smart Search Schema
+// ============================================================================
+
+export const SmartSearchSchema = z.object({
+  file_path: FilePathSchema,
+  line: LineSchema,
+  column: ColumnSchema,
+  include: z.array(z.enum([
+    'definition',
+    'references',
+    'hover',
+    'implementations',
+    'incoming_calls',
+    'outgoing_calls',
+  ]))
+    .default(['definition', 'references', 'hover'])
+    .describe('What information to include in the search results'),
+  references_limit: z.number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(10)
+    .describe('Maximum number of references to include'),
+}).strict();
+
+// ============================================================================
 // Type Exports
 // ============================================================================
 
@@ -172,3 +276,8 @@ export type RenameInput = z.infer<typeof RenameSchema>;
 export type ServerStatusInput = z.infer<typeof ServerStatusSchema>;
 export type StartServerInput = z.infer<typeof StartServerSchema>;
 export type StopServerInput = z.infer<typeof StopServerSchema>;
+export type CodeActionsInput = z.infer<typeof CodeActionsSchema>;
+export type CallHierarchyInput = z.infer<typeof CallHierarchySchema>;
+export type TypeHierarchyInput = z.infer<typeof TypeHierarchySchema>;
+export type FormatDocumentInput = z.infer<typeof FormatDocumentSchema>;
+export type SmartSearchInput = z.infer<typeof SmartSearchSchema>;

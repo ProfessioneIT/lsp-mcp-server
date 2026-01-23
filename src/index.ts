@@ -22,6 +22,11 @@ import {
   ServerStatusSchema,
   StartServerSchema,
   StopServerSchema,
+  CodeActionsSchema,
+  CallHierarchySchema,
+  TypeHierarchySchema,
+  FormatDocumentSchema,
+  SmartSearchSchema,
 } from './schemas/tool-schemas.js';
 
 import {
@@ -39,6 +44,11 @@ import {
   handleServerStatus,
   handleStartServer,
   handleStopServer,
+  handleCodeActions,
+  handleCallHierarchy,
+  handleTypeHierarchy,
+  handleFormatDocument,
+  handleSmartSearch,
   setToolContext,
 } from './tools/index.js';
 
@@ -67,6 +77,12 @@ const TOOLS = [
       },
       required: ['file_path', 'line', 'column'],
     },
+    annotations: {
+      title: 'Go to Definition',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_goto_type_definition',
@@ -79,6 +95,12 @@ const TOOLS = [
         column: { type: 'number', description: 'Column number (1-indexed)' },
       },
       required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Go to Type Definition',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -96,6 +118,12 @@ const TOOLS = [
       },
       required: ['file_path', 'line', 'column'],
     },
+    annotations: {
+      title: 'Find References',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_find_implementations',
@@ -110,6 +138,12 @@ const TOOLS = [
       },
       required: ['file_path', 'line', 'column'],
     },
+    annotations: {
+      title: 'Find Implementations',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_hover',
@@ -122,6 +156,12 @@ const TOOLS = [
         column: { type: 'number', description: 'Column number (1-indexed)' },
       },
       required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Hover Information',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -136,6 +176,12 @@ const TOOLS = [
       },
       required: ['file_path', 'line', 'column'],
     },
+    annotations: {
+      title: 'Signature Help',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_document_symbols',
@@ -146,6 +192,12 @@ const TOOLS = [
         file_path: { type: 'string', description: 'Absolute path to the source file' },
       },
       required: ['file_path'],
+    },
+    annotations: {
+      title: 'Document Symbols',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -164,6 +216,12 @@ const TOOLS = [
       },
       required: ['query'],
     },
+    annotations: {
+      title: 'Workspace Symbols',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_diagnostics',
@@ -181,6 +239,12 @@ const TOOLS = [
       },
       required: ['file_path'],
     },
+    annotations: {
+      title: 'Get Diagnostics',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_completions',
@@ -194,6 +258,12 @@ const TOOLS = [
         limit: { type: 'number', description: 'Maximum number of suggestions', default: 20 },
       },
       required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Code Completions',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -210,6 +280,140 @@ const TOOLS = [
       },
       required: ['file_path', 'line', 'column', 'new_name'],
     },
+    annotations: {
+      title: 'Rename Symbol',
+      readOnlyHint: false, // Can modify files when dry_run=false
+      idempotentHint: true,
+      destructiveHint: false, // Reversible via undo
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_code_actions',
+    description: 'Get available code actions (refactorings, quick fixes) at a position or range. Use for automated fixes, imports organization, and refactoring operations.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        line: { type: 'number', description: 'Start line number (1-indexed)' },
+        column: { type: 'number', description: 'Start column number (1-indexed)' },
+        end_line: { type: 'number', description: 'End line number (1-indexed). Defaults to start line.' },
+        end_column: { type: 'number', description: 'End column number (1-indexed). Defaults to start column.' },
+        kinds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter by code action kinds: quickfix, refactor, refactor.extract, refactor.inline, refactor.rewrite, source, source.organizeImports, source.fixAll',
+        },
+        apply: { type: 'boolean', description: 'If true, apply the first available action. If false, just list available actions.', default: false },
+        action_index: { type: 'number', description: 'Index of the action to apply (when apply=true). Defaults to 0 (first action).' },
+      },
+      required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Code Actions',
+      readOnlyHint: false, // Can modify files when apply=true
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_call_hierarchy',
+    description: 'Get the call hierarchy for a function/method - who calls this function (incoming) and what functions this calls (outgoing). Essential for understanding code flow and impact analysis before refactoring.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        line: { type: 'number', description: 'Line number (1-indexed)' },
+        column: { type: 'number', description: 'Column number (1-indexed)' },
+        direction: {
+          type: 'string',
+          enum: ['incoming', 'outgoing', 'both'],
+          description: 'Direction of call hierarchy: incoming (callers), outgoing (callees), or both',
+          default: 'both',
+        },
+      },
+      required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Call Hierarchy',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_type_hierarchy',
+    description: 'Get the type hierarchy for a class/interface - supertypes (parents, interfaces) and subtypes (children, implementations). Use for understanding inheritance and planning refactoring that affects class hierarchies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        line: { type: 'number', description: 'Line number (1-indexed)' },
+        column: { type: 'number', description: 'Column number (1-indexed)' },
+        direction: {
+          type: 'string',
+          enum: ['supertypes', 'subtypes', 'both'],
+          description: 'Direction of type hierarchy: supertypes (parents), subtypes (children), or both',
+          default: 'both',
+        },
+      },
+      required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Type Hierarchy',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_format_document',
+    description: 'Format a document using the language server\'s formatting capabilities. Respects project-specific formatting settings.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file to format' },
+        tab_size: { type: 'number', description: 'Number of spaces per tab (default: 2)', default: 2 },
+        insert_spaces: { type: 'boolean', description: 'Use spaces instead of tabs (default: true)', default: true },
+        apply: { type: 'boolean', description: 'If true, apply formatting changes to file. If false, return edits without applying.', default: false },
+      },
+      required: ['file_path'],
+    },
+    annotations: {
+      title: 'Format Document',
+      readOnlyHint: false, // Can modify files when apply=true
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_smart_search',
+    description: 'Comprehensive symbol search combining multiple LSP operations in one call. Get definition, references, implementations, type info, and call hierarchy for a symbol. More efficient than calling multiple individual tools.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        line: { type: 'number', description: 'Line number (1-indexed)' },
+        column: { type: 'number', description: 'Column number (1-indexed)' },
+        include: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['hover', 'definition', 'references', 'implementations', 'incoming_calls', 'outgoing_calls'],
+          },
+          description: 'Which information to include in results',
+          default: ['hover', 'definition', 'references'],
+        },
+        references_limit: { type: 'number', description: 'Maximum number of references/implementations to return', default: 20 },
+      },
+      required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Smart Search',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_server_status',
@@ -219,6 +423,12 @@ const TOOLS = [
       properties: {
         server_id: { type: 'string', description: 'Specific server ID to check, or omit for all servers' },
       },
+    },
+    annotations: {
+      title: 'Server Status',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
   {
@@ -232,6 +442,12 @@ const TOOLS = [
       },
       required: ['server_id', 'workspace_root'],
     },
+    annotations: {
+      title: 'Start Server',
+      readOnlyHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   },
   {
     name: 'lsp_stop_server',
@@ -243,6 +459,12 @@ const TOOLS = [
         workspace_root: { type: 'string', description: 'Workspace root to stop server for. If omitted, stops all instances of this server type.' },
       },
       required: ['server_id'],
+    },
+    annotations: {
+      title: 'Stop Server',
+      readOnlyHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
   },
 ];
@@ -309,6 +531,26 @@ const toolHandlers: Record<string, { schema: unknown; handler: ToolHandler }> = 
   lsp_stop_server: {
     schema: StopServerSchema,
     handler: async (input) => handleStopServer(StopServerSchema.parse(input)),
+  },
+  lsp_code_actions: {
+    schema: CodeActionsSchema,
+    handler: async (input) => handleCodeActions(CodeActionsSchema.parse(input)),
+  },
+  lsp_call_hierarchy: {
+    schema: CallHierarchySchema,
+    handler: async (input) => handleCallHierarchy(CallHierarchySchema.parse(input)),
+  },
+  lsp_type_hierarchy: {
+    schema: TypeHierarchySchema,
+    handler: async (input) => handleTypeHierarchy(TypeHierarchySchema.parse(input)),
+  },
+  lsp_format_document: {
+    schema: FormatDocumentSchema,
+    handler: async (input) => handleFormatDocument(FormatDocumentSchema.parse(input)),
+  },
+  lsp_smart_search: {
+    schema: SmartSearchSchema,
+    handler: async (input) => handleSmartSearch(SmartSearchSchema.parse(input)),
   },
 };
 

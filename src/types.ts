@@ -16,6 +16,14 @@ import type {
   WorkspaceEdit,
   Diagnostic,
   Range,
+  CodeAction,
+  Command,
+  CallHierarchyItem,
+  CallHierarchyIncomingCall,
+  CallHierarchyOutgoingCall,
+  TypeHierarchyItem,
+  TextEdit,
+  FormattingOptions,
 } from 'vscode-languageserver-protocol';
 
 // Re-export LSP types we use
@@ -37,6 +45,14 @@ export type {
   WorkspaceEdit,
   Diagnostic,
   Range,
+  CodeAction,
+  Command,
+  CallHierarchyItem,
+  CallHierarchyIncomingCall,
+  CallHierarchyOutgoingCall,
+  TypeHierarchyItem,
+  TextEdit,
+  FormattingOptions,
 };
 
 // ============================================================================
@@ -113,6 +129,22 @@ export interface LSPClient {
   completion(uri: string, position: Position): Promise<CompletionList | CompletionItem[] | null>;
   prepareRename(uri: string, position: Position): Promise<Range | { range: Range; placeholder: string } | null>;
   rename(uri: string, position: Position, newName: string): Promise<WorkspaceEdit | null>;
+
+  // Code Actions
+  codeActions(uri: string, range: Range, diagnostics: Diagnostic[], kinds?: string[]): Promise<(CodeAction | Command)[] | null>;
+
+  // Call Hierarchy
+  prepareCallHierarchy(uri: string, position: Position): Promise<CallHierarchyItem[] | null>;
+  callHierarchyIncomingCalls(item: CallHierarchyItem): Promise<CallHierarchyIncomingCall[] | null>;
+  callHierarchyOutgoingCalls(item: CallHierarchyItem): Promise<CallHierarchyOutgoingCall[] | null>;
+
+  // Type Hierarchy
+  prepareTypeHierarchy(uri: string, position: Position): Promise<TypeHierarchyItem[] | null>;
+  typeHierarchySupertypes(item: TypeHierarchyItem): Promise<TypeHierarchyItem[] | null>;
+  typeHierarchySubtypes(item: TypeHierarchyItem): Promise<TypeHierarchyItem[] | null>;
+
+  // Document Formatting
+  formatDocument(uri: string, options: FormattingOptions): Promise<TextEdit[] | null>;
 
   // Request management
   cancelRequest(id: number | string): void;
@@ -448,4 +480,150 @@ export interface StopServerResponse {
   server_id: string;
   workspace_root?: string;
   was_running: boolean;
+}
+
+// ============================================================================
+// Code Actions Response Types
+// ============================================================================
+
+export interface CodeActionResult {
+  title: string;
+  kind?: string;
+  is_preferred?: boolean;
+  diagnostics?: DiagnosticResult[];
+  edit?: {
+    files_affected: number;
+    changes: Record<string, Array<{
+      range: { start: { line: number; column: number }; end: { line: number; column: number } };
+      new_text: string;
+    }>>;
+  };
+  command?: {
+    title: string;
+    command: string;
+    arguments?: unknown[];
+  };
+}
+
+export interface CodeActionsResponse {
+  actions: CodeActionResult[];
+  total_count: number;
+}
+
+// ============================================================================
+// Call Hierarchy Response Types
+// ============================================================================
+
+export interface CallHierarchyItemResult {
+  name: string;
+  kind: string;
+  path: string;
+  line: number;
+  column: number;
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  selection_range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  detail?: string;
+  tags?: string[];
+}
+
+export interface CallHierarchyIncomingCallResult {
+  from: CallHierarchyItemResult;
+  from_ranges: Array<{
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  }>;
+}
+
+export interface CallHierarchyOutgoingCallResult {
+  to: CallHierarchyItemResult;
+  from_ranges: Array<{
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  }>;
+}
+
+export interface CallHierarchyResponse {
+  item: CallHierarchyItemResult | null;
+  incoming_calls?: CallHierarchyIncomingCallResult[];
+  outgoing_calls?: CallHierarchyOutgoingCallResult[];
+}
+
+// ============================================================================
+// Type Hierarchy Response Types
+// ============================================================================
+
+export interface TypeHierarchyItemResult {
+  name: string;
+  kind: string;
+  path: string;
+  line: number;
+  column: number;
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  selection_range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  detail?: string;
+  tags?: string[];
+}
+
+export interface TypeHierarchyResponse {
+  item: TypeHierarchyItemResult | null;
+  supertypes?: TypeHierarchyItemResult[];
+  subtypes?: TypeHierarchyItemResult[];
+}
+
+// ============================================================================
+// Format Document Response Types
+// ============================================================================
+
+export interface FormatEdit {
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  new_text: string;
+}
+
+export interface FormatDocumentResponse {
+  edits: FormatEdit[];
+  edits_count: number;
+  applied: boolean;
+}
+
+// ============================================================================
+// Smart Search Response Types
+// ============================================================================
+
+export interface SmartSearchResponse {
+  symbol_name?: string;
+  definition?: LocationResult;
+  references?: {
+    items: LocationResult[];
+    total_count: number;
+    has_more: boolean;
+  };
+  hover?: {
+    contents: string;
+    range?: {
+      start: { line: number; column: number };
+      end: { line: number; column: number };
+    };
+  };
+  implementations?: {
+    items: LocationResult[];
+    total_count: number;
+    has_more: boolean;
+  };
+  incoming_calls?: CallHierarchyIncomingCallResult[];
+  outgoing_calls?: CallHierarchyOutgoingCallResult[];
 }
