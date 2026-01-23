@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**lsp-mcp-server** is an MCP (Model Context Protocol) server that bridges Claude Code to Language Server Protocol (LSP) servers. It enables semantic code intelligence capabilities like go-to-definition, find-references, hover information, workspace symbol search, diagnostics, completion, and rename.
+**lsp-mcp-server** is an MCP (Model Context Protocol) server that bridges Claude Code to Language Server Protocol (LSP) servers. It enables semantic code intelligence capabilities like go-to-definition, find-references, hover information, workspace symbol search, diagnostics, completion, rename, code actions, call/type hierarchy, and document formatting.
 
-**Current State:** Fully implemented. The project contains a working MCP server with all 14 tools.
+**Current State:** Fully implemented. The project contains a working MCP server with all 19 tools.
 
 ## Build Commands
 
@@ -35,7 +35,7 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
                                    ├── Connection Manager (keyed by language + workspace root)
                                    ├── Document Manager (per-URI versioning, concurrent access)
                                    ├── Diagnostics Cache (stores pushed diagnostics)
-                                   └── Tool Handlers (14 MCP tools)
+                                   └── Tool Handlers (19 MCP tools)
 ```
 
 ### Key Architecture Decisions
@@ -58,7 +58,7 @@ src/
 │   ├── uri.ts                  # File path <-> URI conversion
 │   ├── workspace.ts            # Workspace root detection
 │   └── logger.ts               # Logging utilities
-├── tools/                      # MCP tool implementations (14 tools)
+├── tools/                      # MCP tool implementations (19 tools)
 │   ├── definition.ts           # lsp_goto_definition, lsp_goto_type_definition
 │   ├── references.ts           # lsp_find_references, lsp_find_implementations
 │   ├── hover.ts                # lsp_hover, lsp_signature_help
@@ -66,6 +66,11 @@ src/
 │   ├── diagnostics.ts          # lsp_diagnostics
 │   ├── completion.ts           # lsp_completions
 │   ├── rename.ts               # lsp_rename
+│   ├── code-actions.ts         # lsp_code_actions
+│   ├── call-hierarchy.ts       # lsp_call_hierarchy
+│   ├── type-hierarchy.ts       # lsp_type_hierarchy
+│   ├── formatting.ts           # lsp_format_document
+│   ├── smart-search.ts         # lsp_smart_search
 │   ├── server.ts               # lsp_server_status, lsp_start_server, lsp_stop_server
 │   ├── utils.ts                # Shared tool utilities
 │   ├── context.ts              # Tool context (shared services)
@@ -81,7 +86,7 @@ src/
     └── tool-schemas.ts         # Zod validation schemas for all tools
 ```
 
-### MCP Tools (14 total)
+### MCP Tools (19 total)
 
 | Tool | Purpose |
 |------|---------|
@@ -96,6 +101,11 @@ src/
 | `lsp_diagnostics` | Get cached errors/warnings |
 | `lsp_completions` | Get code completion suggestions |
 | `lsp_rename` | Rename symbol (with dry_run preview mode) |
+| `lsp_code_actions` | Get/apply quick fixes and refactorings |
+| `lsp_call_hierarchy` | Get incoming/outgoing call hierarchy |
+| `lsp_type_hierarchy` | Get supertypes/subtypes hierarchy |
+| `lsp_format_document` | Format document using language server |
+| `lsp_smart_search` | Combined hover + definition + references search |
 | `lsp_server_status` | Check language server status |
 | `lsp_start_server` | Manually start a server |
 | `lsp_stop_server` | Stop a running server |

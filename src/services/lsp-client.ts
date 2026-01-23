@@ -23,6 +23,12 @@ import {
   PublishDiagnosticsNotification,
   CodeActionRequest,
   DocumentFormattingRequest,
+  CallHierarchyPrepareRequest,
+  CallHierarchyIncomingCallsRequest,
+  CallHierarchyOutgoingCallsRequest,
+  TypeHierarchyPrepareRequest,
+  TypeHierarchySupertypesRequest,
+  TypeHierarchySubtypesRequest,
   type TextDocumentPositionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
@@ -550,21 +556,21 @@ export class LSPClientImpl implements ILSPClient {
       textDocument: { uri },
       position,
     };
-    return this.sendRequest({ method: 'textDocument/prepareCallHierarchy' }, params);
+    return this.sendRequest(CallHierarchyPrepareRequest.type, params);
   }
 
   async callHierarchyIncomingCalls(
     item: CallHierarchyItem
   ): Promise<CallHierarchyIncomingCall[] | null> {
     this.ensureCapability('callHierarchyProvider', 'callHierarchy');
-    return this.sendRequest({ method: 'callHierarchy/incomingCalls' }, { item });
+    return this.sendRequest(CallHierarchyIncomingCallsRequest.type, { item });
   }
 
   async callHierarchyOutgoingCalls(
     item: CallHierarchyItem
   ): Promise<CallHierarchyOutgoingCall[] | null> {
     this.ensureCapability('callHierarchyProvider', 'callHierarchy');
-    return this.sendRequest({ method: 'callHierarchy/outgoingCalls' }, { item });
+    return this.sendRequest(CallHierarchyOutgoingCallsRequest.type, { item });
   }
 
   // ============================================================================
@@ -580,21 +586,21 @@ export class LSPClientImpl implements ILSPClient {
       textDocument: { uri },
       position,
     };
-    return this.sendRequest({ method: 'textDocument/prepareTypeHierarchy' }, params);
+    return this.sendRequest(TypeHierarchyPrepareRequest.type, params);
   }
 
   async typeHierarchySupertypes(
     item: TypeHierarchyItem
   ): Promise<TypeHierarchyItem[] | null> {
     this.ensureCapability('typeHierarchyProvider', 'typeHierarchy');
-    return this.sendRequest({ method: 'typeHierarchy/supertypes' }, { item });
+    return this.sendRequest(TypeHierarchySupertypesRequest.type, { item });
   }
 
   async typeHierarchySubtypes(
     item: TypeHierarchyItem
   ): Promise<TypeHierarchyItem[] | null> {
     this.ensureCapability('typeHierarchyProvider', 'typeHierarchy');
-    return this.sendRequest({ method: 'typeHierarchy/subtypes' }, { item });
+    return this.sendRequest(TypeHierarchySubtypesRequest.type, { item });
   }
 
   // ============================================================================

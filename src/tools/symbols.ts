@@ -1,4 +1,4 @@
-import type { DocumentSymbol, SymbolInformation, WorkspaceSymbol } from 'vscode-languageserver-protocol';
+import type { DocumentSymbol, SymbolInformation } from 'vscode-languageserver-protocol';
 import type { DocumentSymbolsInput, WorkspaceSymbolsInput } from '../schemas/tool-schemas.js';
 import type { DocumentSymbolsResponse, WorkspaceSymbolsResponse, SymbolResult, WorkspaceSymbolResult } from '../types.js';
 import { prepareFile, getSymbolKindName, matchesSymbolKind } from './utils.js';

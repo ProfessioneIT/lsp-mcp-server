@@ -25,7 +25,7 @@ function documentationToString(doc: CompletionItem['documentation']): string | u
 /**
  * Convert CompletionItem to our format.
  */
-function completionItemToResult(item: CompletionItem): CompletionResult {
+function completionItemToResultlt(item: CompletionItem): CompletionResult {
   const result: CompletionResult = {
     label: item.label,
     kind: getCompletionKindName(item.kind),
@@ -90,7 +90,7 @@ export async function handleCompletions(
   // Convert and limit
   const completions = items
     .slice(0, limit)
-    .map(item => completionItemToResult(item));
+    .map(item => completionItemToResultlt(item));
 
   return {
     completions,

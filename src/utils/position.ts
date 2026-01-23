@@ -198,10 +198,7 @@ export function isValidPosition(line: number, column: number, content: string): 
   }
 
   // Count code points in the line
-  let codePoints = 0;
-  for (const _ of lineContent) {
-    codePoints++;
-  }
+  const codePoints = [...lineContent].length;
 
   // Column can be at most codePoints + 1 (for end-of-line position)
   return column <= codePoints + 1;
@@ -238,10 +235,7 @@ export function clampPosition(
 
   // Get line content and count code points
   const lineContent = lines[clampedLine - 1] ?? '';
-  let codePoints = 0;
-  for (const _ of lineContent) {
-    codePoints++;
-  }
+  const codePoints = [...lineContent].length;
 
   // Clamp column (allow end-of-line position)
   const clampedColumn = Math.max(1, Math.min(column, codePoints + 1));

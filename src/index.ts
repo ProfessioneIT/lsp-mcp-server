@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// TODO: Migrate to McpServer high-level API when time permits
+// The Server class is deprecated in favor of McpServer from '@modelcontextprotocol/sdk/server/mcp.js'
+// McpServer provides a simpler API with registerTool() instead of manual setRequestHandler() calls
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -295,8 +298,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         file_path: { type: 'string', description: 'Absolute path to the source file' },
-        line: { type: 'number', description: 'Start line number (1-indexed)' },
-        column: { type: 'number', description: 'Start column number (1-indexed)' },
+        start_line: { type: 'number', description: 'Start line number (1-indexed)' },
+        start_column: { type: 'number', description: 'Start column number (1-indexed)' },
         end_line: { type: 'number', description: 'End line number (1-indexed). Defaults to start line.' },
         end_column: { type: 'number', description: 'End column number (1-indexed). Defaults to start column.' },
         kinds: {
@@ -307,7 +310,7 @@ const TOOLS = [
         apply: { type: 'boolean', description: 'If true, apply the first available action. If false, just list available actions.', default: false },
         action_index: { type: 'number', description: 'Index of the action to apply (when apply=true). Defaults to 0 (first action).' },
       },
-      required: ['file_path', 'line', 'column'],
+      required: ['file_path', 'start_line', 'start_column'],
     },
     annotations: {
       title: 'Code Actions',

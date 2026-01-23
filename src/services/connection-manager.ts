@@ -145,17 +145,19 @@ export class ConnectionManagerImpl implements IConnectionManager {
     const normalizedPath = normalizePath(filePath);
     const ext = getExtension(normalizedPath);
 
-    let serverConfig: LSPServerConfig | undefined;
+    // Find server config (currently unused, but reserved for future root pattern detection)
+    let _serverConfig: LSPServerConfig | undefined;
 
     if (serverId) {
-      serverConfig = this.config.servers.find(s => s.id === serverId);
+      _serverConfig = this.config.servers.find(s => s.id === serverId);
     } else {
-      serverConfig = this.config.servers.find(s => s.extensions.includes(ext));
+      _serverConfig = this.config.servers.find(s => s.extensions.includes(ext));
     }
 
     // This is sync, but we return a promise-based version from the interface
     // For now, just return the file's directory as a fallback
     // The actual detection happens in getClientForFile
+    // TODO: Use _serverConfig.rootPatterns for better workspace detection
     return normalizedPath;
   }
 
