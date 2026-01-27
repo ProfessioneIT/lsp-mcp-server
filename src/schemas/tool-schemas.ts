@@ -131,6 +131,21 @@ export const DiagnosticsSchema = z.object({
     .describe('Filter diagnostics by minimum severity'),
 }).strict();
 
+export const WorkspaceDiagnosticsSchema = z.object({
+  severity_filter: z.enum(['all', 'error', 'warning', 'info', 'hint'])
+    .default('all')
+    .describe('Filter diagnostics by minimum severity'),
+  limit: z.number()
+    .int()
+    .min(1)
+    .max(200)
+    .default(50)
+    .describe('Maximum number of diagnostics to return'),
+  group_by: z.enum(['file', 'severity'])
+    .default('file')
+    .describe('How to group/sort results'),
+}).strict();
+
 export const CompletionsSchema = z.object({
   file_path: FilePathSchema,
   line: LineSchema,
@@ -280,6 +295,36 @@ export const SmartSearchSchema = z.object({
     .describe('Maximum number of references to include'),
 }).strict();
 
+export const FindSymbolSchema = z.object({
+  name: z.string()
+    .min(1)
+    .describe('Symbol name to search for (supports fuzzy matching)'),
+  kind: z.enum([
+    'File', 'Module', 'Namespace', 'Package', 'Class', 'Method', 'Property',
+    'Field', 'Constructor', 'Enum', 'Interface', 'Function', 'Variable',
+    'Constant', 'String', 'Number', 'Boolean', 'Array', 'Object', 'Key',
+    'Null', 'EnumMember', 'Struct', 'Event', 'Operator', 'TypeParameter',
+  ])
+    .optional()
+    .describe('Filter to specific symbol kind'),
+  include: z.array(z.enum([
+    'definition',
+    'references',
+    'hover',
+    'implementations',
+    'incoming_calls',
+    'outgoing_calls',
+  ]))
+    .default(['definition', 'references', 'hover'])
+    .describe('What information to include for the found symbol'),
+  references_limit: z.number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(20)
+    .describe('Maximum number of references to include'),
+}).strict();
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -293,6 +338,7 @@ export type SignatureHelpInput = z.infer<typeof SignatureHelpSchema>;
 export type DocumentSymbolsInput = z.infer<typeof DocumentSymbolsSchema>;
 export type WorkspaceSymbolsInput = z.infer<typeof WorkspaceSymbolsSchema>;
 export type DiagnosticsInput = z.infer<typeof DiagnosticsSchema>;
+export type WorkspaceDiagnosticsInput = z.infer<typeof WorkspaceDiagnosticsSchema>;
 export type CompletionsInput = z.infer<typeof CompletionsSchema>;
 export type RenameInput = z.infer<typeof RenameSchema>;
 export type ServerStatusInput = z.infer<typeof ServerStatusSchema>;
@@ -303,3 +349,40 @@ export type CallHierarchyInput = z.infer<typeof CallHierarchySchema>;
 export type TypeHierarchyInput = z.infer<typeof TypeHierarchySchema>;
 export type FormatDocumentInput = z.infer<typeof FormatDocumentSchema>;
 export type SmartSearchInput = z.infer<typeof SmartSearchSchema>;
+export type FindSymbolInput = z.infer<typeof FindSymbolSchema>;
+
+// ============================================================================
+// File Exports Schema
+// ============================================================================
+
+export const FileExportsSchema = z.object({
+  file_path: FilePathSchema,
+  include_signatures: z.boolean()
+    .default(true)
+    .describe('Include type signatures from hover (slower but more informative)'),
+}).strict();
+
+export type FileExportsInput = z.infer<typeof FileExportsSchema>;
+
+// ============================================================================
+// File Imports Schema
+// ============================================================================
+
+export const FileImportsSchema = z.object({
+  file_path: FilePathSchema,
+}).strict();
+
+export type FileImportsInput = z.infer<typeof FileImportsSchema>;
+
+// ============================================================================
+// Related Files Schema
+// ============================================================================
+
+export const RelatedFilesSchema = z.object({
+  file_path: FilePathSchema,
+  relationship: z.enum(['imports', 'imported_by', 'all'])
+    .default('all')
+    .describe('Which relationships to include'),
+}).strict();
+
+export type RelatedFilesInput = z.infer<typeof RelatedFilesSchema>;

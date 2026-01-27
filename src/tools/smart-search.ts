@@ -20,9 +20,10 @@
  * SOFTWARE.
  */
 
-import type { SmartSearchInput } from '../schemas/tool-schemas.js';
+import type { SmartSearchInput, FindSymbolInput } from '../schemas/tool-schemas.js';
 import type {
   SmartSearchResponse,
+  FindSymbolResponse,
   LocationResult,
 } from '../types.js';
 import { prepareFile, toPosition, convertLocations } from './utils.js';
@@ -225,6 +226,150 @@ export async function handleSmartSearch(
     } catch {
       // Ignore call hierarchy errors
     }
+  }
+
+  return result;
+}
+
+/**
+ * Extract location info from a workspace symbol (handles both SymbolInformation and WorkspaceSymbol).
+ */
+function getSymbolLocation(symbol: { location?: { uri: string; range?: { start?: { line: number; character: number } } } }): { uri: string; line: number; column: number } | null {
+  if (!symbol.location) return null;
+  const loc = symbol.location;
+  if (!loc.uri) return null;
+
+  return {
+    uri: loc.uri,
+    line: (loc.range?.start?.line ?? 0) + 1,
+    column: (loc.range?.start?.character ?? 0) + 1,
+  };
+}
+
+/**
+ * Handle lsp_find_symbol tool call.
+ * Finds a symbol by name and returns comprehensive information.
+ */
+export async function handleFindSymbol(
+  input: FindSymbolInput
+): Promise<FindSymbolResponse> {
+  const { name, kind, include, references_limit } = input;
+  const ctx = getToolContext();
+
+  // Get the first available client to search for symbols
+  const servers = ctx.connectionManager.listActiveServers();
+  if (servers.length === 0) {
+    return {
+      query: name,
+      matches_found: 0,
+      symbol_name: name,
+    };
+  }
+
+  // Find a running server to query
+  let client = null;
+  for (const server of servers) {
+    if (server.status === 'running' && server.client) {
+      client = server.client;
+      break;
+    }
+  }
+
+  if (!client) {
+    return {
+      query: name,
+      matches_found: 0,
+      symbol_name: name,
+    };
+  }
+
+  // Search for symbols matching the name
+  const symbols = await client.workspaceSymbols(name);
+  if (!symbols || symbols.length === 0) {
+    return {
+      query: name,
+      matches_found: 0,
+      symbol_name: name,
+    };
+  }
+
+  // Filter by kind if specified
+  let filtered = symbols;
+  if (kind) {
+    filtered = symbols.filter(s => {
+      const symbolKind = getSymbolKindName(s.kind);
+      return symbolKind === kind;
+    });
+    if (filtered.length === 0) {
+      // Fall back to all matches if kind filter removes everything
+      filtered = symbols;
+    }
+  }
+
+  // Sort to prioritize exact matches
+  filtered.sort((a, b) => {
+    const aExact = a.name === name ? 0 : 1;
+    const bExact = b.name === name ? 0 : 1;
+    if (aExact !== bExact) return aExact - bExact;
+    // Then by name length (shorter = more likely intended)
+    return a.name.length - b.name.length;
+  });
+
+  // Get the best match
+  const bestMatch = filtered[0]!;
+  const location = getSymbolLocation(bestMatch as { location?: { uri: string; range?: { start?: { line: number; character: number } } } });
+
+  if (!location) {
+    return {
+      query: name,
+      matches_found: filtered.length,
+      match: {
+        name: bestMatch.name,
+        kind: getSymbolKindName(bestMatch.kind),
+        path: '',
+        line: 1,
+        column: 1,
+        container_name: bestMatch.containerName,
+      },
+      symbol_name: bestMatch.name,
+    };
+  }
+
+  const filePath = uriToPath(location.uri);
+
+  const result: FindSymbolResponse = {
+    query: name,
+    matches_found: filtered.length,
+    match: {
+      name: bestMatch.name,
+      kind: getSymbolKindName(bestMatch.kind),
+      path: filePath,
+      line: location.line,
+      column: location.column,
+      container_name: bestMatch.containerName,
+    },
+    symbol_name: bestMatch.name,
+  };
+
+  // Now get detailed information using smart search logic
+  try {
+    const smartResult = await handleSmartSearch({
+      file_path: filePath,
+      line: location.line,
+      column: location.column,
+      include,
+      references_limit,
+    });
+
+    // Merge smart search results
+    if (smartResult.definition) result.definition = smartResult.definition;
+    if (smartResult.references) result.references = smartResult.references;
+    if (smartResult.hover) result.hover = smartResult.hover;
+    if (smartResult.implementations) result.implementations = smartResult.implementations;
+    if (smartResult.incoming_calls) result.incoming_calls = smartResult.incoming_calls;
+    if (smartResult.outgoing_calls) result.outgoing_calls = smartResult.outgoing_calls;
+  } catch {
+    // If smart search fails, we still have the basic match info
   }
 
   return result;

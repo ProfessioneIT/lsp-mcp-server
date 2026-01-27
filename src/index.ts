@@ -42,6 +42,7 @@ import {
   DocumentSymbolsSchema,
   WorkspaceSymbolsSchema,
   DiagnosticsSchema,
+  WorkspaceDiagnosticsSchema,
   CompletionsSchema,
   RenameSchema,
   ServerStatusSchema,
@@ -52,6 +53,10 @@ import {
   TypeHierarchySchema,
   FormatDocumentSchema,
   SmartSearchSchema,
+  FindSymbolSchema,
+  FileExportsSchema,
+  FileImportsSchema,
+  RelatedFilesSchema,
 } from './schemas/tool-schemas.js';
 
 import {
@@ -63,7 +68,11 @@ import {
   handleSignatureHelp,
   handleDocumentSymbols,
   handleWorkspaceSymbols,
+  handleFileExports,
+  handleFileImports,
+  handleRelatedFiles,
   handleDiagnostics,
+  handleWorkspaceDiagnostics,
   handleCompletions,
   handleRename,
   handleServerStatus,
@@ -74,6 +83,7 @@ import {
   handleTypeHierarchy,
   handleFormatDocument,
   handleSmartSearch,
+  handleFindSymbol,
   setToolContext,
 } from './tools/index.js';
 
@@ -92,7 +102,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 const TOOLS = [
   {
     name: 'lsp_goto_definition',
-    description: 'Navigate to the definition of a symbol at the given position. Returns file path, line, and column of the definition.',
+    description: 'Find where a function, class, or variable is defined. More accurate than grep—handles aliases, re-exports, and overloads correctly. Returns file path, line, and column of the definition.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -111,7 +121,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_goto_type_definition',
-    description: 'Navigate to the type definition of a symbol. Useful for finding the class/interface that defines a variable\'s type.',
+    description: 'Find the type that defines a variable, parameter, or return value. Use when you have a variable and want to see its interface/class definition, not where the variable itself is declared.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -130,7 +140,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_find_references',
-    description: 'Find all references to the symbol at the given position across the workspace.',
+    description: 'Find every usage of a symbol across the codebase. Use before renaming or deleting to understand impact. More complete than grep—finds semantic matches, not just text.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -152,7 +162,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_find_implementations',
-    description: 'Find all implementations of an interface or abstract method.',
+    description: 'Find all concrete implementations of an interface, abstract class, or abstract method. Use to understand how an abstraction is actually used in practice.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -172,7 +182,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_hover',
-    description: 'Get hover information (type info, documentation) for the symbol at the given position.',
+    description: 'Get the type signature and documentation for any symbol. Use to understand what a function accepts/returns or what type a variable has, without reading its implementation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -191,7 +201,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_signature_help',
-    description: 'Get function/method signature information when inside a call expression.',
+    description: 'Get parameter hints for a function call. Use when you need to know what arguments a function expects and their types, especially for overloaded functions.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -210,7 +220,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_document_symbols',
-    description: 'Get all symbols (functions, classes, variables, etc.) defined in a document.',
+    description: 'Get a structured outline of a file: all functions, classes, interfaces, and variables with their types and relationships. Faster and more accurate than reading and parsing the file yourself.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -227,7 +237,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_workspace_symbols',
-    description: 'Search for symbols across the entire workspace by name.',
+    description: 'Find any function, class, interface, or type by name—no file path needed. Start here when exploring a codebase or locating where something is defined. Supports fuzzy matching.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -249,8 +259,66 @@ const TOOLS = [
     },
   },
   {
+    name: 'lsp_file_exports',
+    description: 'Get the public API surface of a file: top-level functions, classes, interfaces, and variables with their type signatures. Use to understand what a module exposes without reading the entire file.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        include_signatures: { type: 'boolean', description: 'Include type signatures (slower but more informative)', default: true },
+      },
+      required: ['file_path'],
+    },
+    annotations: {
+      title: 'File Exports',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_file_imports',
+    description: 'Get all imports/dependencies of a file. Shows what modules this file depends on, including ES modules, CommonJS require(), and dynamic imports. Use to understand file dependencies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+      },
+      required: ['file_path'],
+    },
+    annotations: {
+      title: 'File Imports',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_related_files',
+    description: 'Find files connected to a given file: what it imports and what imports it. Use to understand a file\'s dependencies and dependents before refactoring.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        relationship: {
+          type: 'string',
+          enum: ['imports', 'imported_by', 'all'],
+          description: 'Which relationships to include',
+          default: 'all',
+        },
+      },
+      required: ['file_path'],
+    },
+    annotations: {
+      title: 'Related Files',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
     name: 'lsp_diagnostics',
-    description: 'Get cached diagnostics (errors, warnings) for a file. Diagnostics come from language server notifications.',
+    description: 'Get compiler errors, warnings, and hints for a file. Use after making changes to check for type errors, missing imports, or other issues. Results are cached from language server notifications.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -272,8 +340,37 @@ const TOOLS = [
     },
   },
   {
+    name: 'lsp_workspace_diagnostics',
+    description: 'Get all errors and warnings across the entire project—no file path needed. Use during initial analysis to find problems or after changes to check overall project health. Only includes files opened in this session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        severity_filter: {
+          type: 'string',
+          enum: ['all', 'error', 'warning', 'info', 'hint'],
+          description: 'Filter diagnostics by minimum severity',
+          default: 'all',
+        },
+        limit: { type: 'number', description: 'Maximum number of diagnostics to return', default: 50 },
+        group_by: {
+          type: 'string',
+          enum: ['file', 'severity'],
+          description: 'How to group/sort results',
+          default: 'file',
+        },
+      },
+      required: [],
+    },
+    annotations: {
+      title: 'Workspace Diagnostics',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
     name: 'lsp_completions',
-    description: 'Get code completion suggestions at the given position.',
+    description: 'Get intelligent code completion suggestions at a position. Returns available methods, properties, variables, and types that are valid in that context. More accurate than text-based completion.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -293,7 +390,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_rename',
-    description: 'Rename a symbol across the workspace. By default performs a dry run showing changes without applying them.',
+    description: 'Rename a symbol across the entire codebase safely. Handles all references, imports, and re-exports. Use dry_run=true (default) to preview changes before applying. More reliable than find-and-replace.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -315,7 +412,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_code_actions',
-    description: 'Get available code actions (refactorings, quick fixes) at a position or range. Use for automated fixes, imports organization, and refactoring operations.',
+    description: 'Get quick fixes and refactoring suggestions at a position. Use to auto-fix errors, organize imports, extract functions, or apply other automated transformations. Set apply=true to execute an action.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -343,7 +440,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_call_hierarchy',
-    description: 'Get the call hierarchy for a function/method - who calls this function (incoming) and what functions this calls (outgoing). Essential for understanding code flow and impact analysis before refactoring.',
+    description: 'Trace function calls: who calls this function (incoming) and what it calls (outgoing). Essential for understanding code flow and assessing impact before modifying a function.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -368,7 +465,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_type_hierarchy',
-    description: 'Get the type hierarchy for a class/interface - supertypes (parents, interfaces) and subtypes (children, implementations). Use for understanding inheritance and planning refactoring that affects class hierarchies.',
+    description: 'Explore inheritance: find parent classes/interfaces (supertypes) and child classes/implementations (subtypes). Use to understand class relationships before modifying a base class or interface.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -393,7 +490,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_format_document',
-    description: 'Format a document using the language server\'s formatting capabilities. Respects project-specific formatting settings.',
+    description: 'Format a file according to project style settings (prettier, eslint, etc.). Use after making edits to ensure consistent formatting. Set apply=true to write changes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -413,7 +510,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_smart_search',
-    description: 'Comprehensive symbol search combining multiple LSP operations in one call. Get definition, references, implementations, type info, and call hierarchy for a symbol. More efficient than calling multiple individual tools.',
+    description: 'Get comprehensive information about a symbol in one call: type signature, definition location, all references, implementations, and call hierarchy. Use when you need full context about something instead of making multiple separate queries.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -441,8 +538,40 @@ const TOOLS = [
     },
   },
   {
+    name: 'lsp_find_symbol',
+    description: 'Find a symbol by name alone—no file path or position needed. Returns the definition location plus full context (type info, references, call hierarchy). Use when you know a symbol name but not where it is defined.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Symbol name to search for (supports fuzzy matching)' },
+        kind: {
+          type: 'string',
+          enum: ['File', 'Module', 'Namespace', 'Package', 'Class', 'Method', 'Property', 'Field', 'Constructor', 'Enum', 'Interface', 'Function', 'Variable', 'Constant', 'String', 'Number', 'Boolean', 'Array', 'Object', 'Key', 'Null', 'EnumMember', 'Struct', 'Event', 'Operator', 'TypeParameter'],
+          description: 'Filter to specific symbol kind',
+        },
+        include: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['hover', 'definition', 'references', 'implementations', 'incoming_calls', 'outgoing_calls'],
+          },
+          description: 'What information to include for the found symbol',
+          default: ['hover', 'definition', 'references'],
+        },
+        references_limit: { type: 'number', description: 'Maximum number of references to include', default: 20 },
+      },
+      required: ['name'],
+    },
+    annotations: {
+      title: 'Find Symbol',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
     name: 'lsp_server_status',
-    description: 'Get status of running language servers.',
+    description: 'Check which language servers are running and their state. Use to verify LSP is available before analysis or to debug connection issues.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -458,7 +587,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_start_server',
-    description: 'Manually start a language server for a specific workspace.',
+    description: 'Start a language server manually for a workspace. Usually not needed—servers auto-start when you use other LSP tools. Use only when you need explicit control over server lifecycle.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -476,7 +605,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_stop_server',
-    description: 'Stop a running language server.',
+    description: 'Stop a running language server to free resources. Servers auto-stop after idle timeout, so manual stop is rarely needed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -533,9 +662,25 @@ const toolHandlers: Record<string, { schema: unknown; handler: ToolHandler }> = 
     schema: WorkspaceSymbolsSchema,
     handler: async (input) => handleWorkspaceSymbols(WorkspaceSymbolsSchema.parse(input)),
   },
+  lsp_file_exports: {
+    schema: FileExportsSchema,
+    handler: async (input) => handleFileExports(FileExportsSchema.parse(input)),
+  },
+  lsp_file_imports: {
+    schema: FileImportsSchema,
+    handler: async (input) => handleFileImports(FileImportsSchema.parse(input)),
+  },
+  lsp_related_files: {
+    schema: RelatedFilesSchema,
+    handler: async (input) => handleRelatedFiles(RelatedFilesSchema.parse(input)),
+  },
   lsp_diagnostics: {
     schema: DiagnosticsSchema,
     handler: async (input) => handleDiagnostics(DiagnosticsSchema.parse(input)),
+  },
+  lsp_workspace_diagnostics: {
+    schema: WorkspaceDiagnosticsSchema,
+    handler: async (input) => handleWorkspaceDiagnostics(WorkspaceDiagnosticsSchema.parse(input)),
   },
   lsp_completions: {
     schema: CompletionsSchema,
@@ -576,6 +721,10 @@ const toolHandlers: Record<string, { schema: unknown; handler: ToolHandler }> = 
   lsp_smart_search: {
     schema: SmartSearchSchema,
     handler: async (input) => handleSmartSearch(SmartSearchSchema.parse(input)),
+  },
+  lsp_find_symbol: {
+    schema: FindSymbolSchema,
+    handler: async (input) => handleFindSymbol(FindSymbolSchema.parse(input)),
   },
 };
 

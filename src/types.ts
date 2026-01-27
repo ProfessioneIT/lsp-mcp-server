@@ -275,6 +275,15 @@ export interface DiagnosticsCache {
 
   /** Clear all diagnostics (on server restart) */
   clearAll(): void;
+
+  /** Get all URIs with cached diagnostics */
+  getUris(): string[];
+
+  /** Get total count of diagnostics across all files */
+  getTotalCount(): number;
+
+  /** Get summary of diagnostics across all files */
+  getSummary(): { errors: number; warnings: number; info: number; hints: number };
 }
 
 // ============================================================================
@@ -344,6 +353,8 @@ export interface LocationResult {
   end_line: number;
   end_column: number;
   context: string;
+  /** The symbol name at this location, if extractable */
+  symbol_name?: string;
 }
 
 export interface DefinitionResponse {
@@ -434,6 +445,33 @@ export interface DiagnosticResult {
 
 export interface DiagnosticsResponse {
   diagnostics: DiagnosticResult[];
+  summary: {
+    errors: number;
+    warnings: number;
+    info: number;
+    hints: number;
+  };
+  note: string;
+}
+
+export interface WorkspaceDiagnosticItem {
+  file: string;
+  line: number;
+  column: number;
+  end_line: number;
+  end_column: number;
+  severity: 'error' | 'warning' | 'info' | 'hint';
+  message: string;
+  code?: string | number;
+  source?: string;
+  context: string;
+}
+
+export interface WorkspaceDiagnosticsResponse {
+  items: WorkspaceDiagnosticItem[];
+  total_count: number;
+  returned_count: number;
+  files_affected: number;
   summary: {
     errors: number;
     warnings: number;
@@ -627,6 +665,81 @@ export interface FormatDocumentResponse {
 // ============================================================================
 
 export interface SmartSearchResponse {
+  symbol_name?: string;
+  definition?: LocationResult;
+  references?: {
+    items: LocationResult[];
+    total_count: number;
+    has_more: boolean;
+  };
+  hover?: {
+    contents: string;
+    range?: {
+      start: { line: number; column: number };
+      end: { line: number; column: number };
+    };
+  };
+  implementations?: {
+    items: LocationResult[];
+    total_count: number;
+    has_more: boolean;
+  };
+  incoming_calls?: CallHierarchyIncomingCallResult[];
+  outgoing_calls?: CallHierarchyOutgoingCallResult[];
+}
+
+export interface FindSymbolMatch {
+  name: string;
+  kind: string;
+  path: string;
+  line: number;
+  column: number;
+  container_name?: string | undefined;
+}
+
+export interface FileExportItem {
+  name: string;
+  kind: string;
+  line: number;
+  column: number;
+  signature?: string | undefined;
+}
+
+export interface FileExportsResponse {
+  file: string;
+  exports: FileExportItem[];
+  note: string;
+}
+
+export interface FileImportItem {
+  module: string;
+  line: number;
+  symbols?: string[] | undefined;
+  is_type_only?: boolean | undefined;
+  is_dynamic?: boolean | undefined;
+}
+
+export interface FileImportsResponse {
+  file: string;
+  imports: FileImportItem[];
+  note: string;
+}
+
+export interface RelatedFilesResponse {
+  file: string;
+  imports: string[];
+  imported_by: string[];
+  note: string;
+}
+
+export interface FindSymbolResponse {
+  /** The symbol that was searched for */
+  query: string;
+  /** The best matching symbol found */
+  match?: FindSymbolMatch;
+  /** Number of total matches found */
+  matches_found: number;
+  /** Detailed information about the matched symbol (same as smart_search) */
   symbol_name?: string;
   definition?: LocationResult;
   references?: {

@@ -21,9 +21,9 @@
  */
 
 import type { DocumentSymbol, SymbolInformation } from 'vscode-languageserver-protocol';
-import type { DocumentSymbolsInput, WorkspaceSymbolsInput } from '../schemas/tool-schemas.js';
-import type { DocumentSymbolsResponse, WorkspaceSymbolsResponse, SymbolResult, WorkspaceSymbolResult } from '../types.js';
-import { prepareFile, getSymbolKindName, matchesSymbolKind } from './utils.js';
+import type { DocumentSymbolsInput, WorkspaceSymbolsInput, FileExportsInput, FileImportsInput, RelatedFilesInput } from '../schemas/tool-schemas.js';
+import type { DocumentSymbolsResponse, WorkspaceSymbolsResponse, SymbolResult, WorkspaceSymbolResult, FileExportsResponse, FileExportItem, FileImportsResponse, FileImportItem, RelatedFilesResponse } from '../types.js';
+import { prepareFile, getSymbolKindName, matchesSymbolKind, toPosition } from './utils.js';
 import { getToolContext } from './context.js';
 import { fromLspRange } from '../utils/position.js';
 import { uriToPath } from '../utils/uri.js';
@@ -201,4 +201,242 @@ export async function handleWorkspaceSymbols(
     returned_count: limited.length,
     has_more: limited.length < allSymbols.length,
   };
+}
+
+/**
+ * Extract signature from hover contents.
+ */
+function extractSignature(hover: { contents: string | { value: string } | Array<string | { value: string }> } | null): string | undefined {
+  if (!hover) return undefined;
+
+  let text: string;
+  if (typeof hover.contents === 'string') {
+    text = hover.contents;
+  } else if (Array.isArray(hover.contents)) {
+    text = hover.contents
+      .map(c => typeof c === 'string' ? c : c.value)
+      .join('\n');
+  } else if ('value' in hover.contents) {
+    text = hover.contents.value;
+  } else {
+    return undefined;
+  }
+
+  // Remove markdown code fences
+  text = text.replace(/```[\w]*\n?/g, '').trim();
+
+  // Take first line (usually the signature)
+  const firstLine = text.split('\n')[0]?.trim();
+  return firstLine || undefined;
+}
+
+/**
+ * Handle lsp_file_exports tool call.
+ * Returns top-level symbols (the file's API surface) with optional type signatures.
+ */
+export async function handleFileExports(
+  input: FileExportsInput
+): Promise<FileExportsResponse> {
+  const { file_path, include_signatures } = input;
+
+  const { client, uri, content } = await prepareFile(file_path);
+
+  // Get document symbols
+  const result = await client.documentSymbols(uri);
+
+  if (!result || result.length === 0) {
+    return {
+      file: file_path,
+      exports: [],
+      note: 'No symbols found in file.',
+    };
+  }
+
+  // Get top-level symbols only
+  const exports: FileExportItem[] = [];
+
+  for (const symbol of result) {
+    const isDoc = isDocumentSymbol(symbol);
+    const range = isDoc ? symbol.selectionRange : symbol.location.range;
+    const { start } = fromLspRange(range, content);
+
+    const item: FileExportItem = {
+      name: symbol.name,
+      kind: getSymbolKindName(symbol.kind),
+      line: start.line,
+      column: start.column,
+    };
+
+    // Get signature via hover if requested
+    if (include_signatures) {
+      try {
+        const position = toPosition(start.line, start.column, content);
+        const hover = await client.hover(uri, position);
+        const sig = extractSignature(hover);
+        if (sig) {
+          item.signature = sig;
+        }
+      } catch {
+        // Ignore hover errors
+      }
+    }
+
+    exports.push(item);
+  }
+
+  return {
+    file: file_path,
+    exports,
+    note: 'Returns top-level symbols. For true export detection, check if symbols are prefixed with "export" in the source.',
+  };
+}
+
+/**
+ * Extract imports from file content using regex patterns.
+ * Supports ES modules (import), CommonJS (require), and TypeScript type imports.
+ */
+function extractImportsFromContent(content: string): FileImportItem[] {
+  const imports: FileImportItem[] = [];
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const lineNum = i + 1;
+
+    // ES module: import { x, y } from 'module'
+    // ES module: import x from 'module'
+    // ES module: import * as x from 'module'
+    // ES module: import 'module'
+    const esImportMatch = line.match(/^\s*import\s+(?:type\s+)?(?:(\{[^}]+\})|(\*\s+as\s+\w+)|(\w+)(?:\s*,\s*(?:(\{[^}]+\})|(\*\s+as\s+\w+)))?)?\s*(?:from\s+)?['"]([^'"]+)['"]/);
+    if (esImportMatch) {
+      const modulePath = esImportMatch[6]!;
+      const isTypeOnly = line.includes('import type');
+      const symbolsStr = esImportMatch[1] || esImportMatch[4]; // Named imports
+
+      const item: FileImportItem = {
+        module: modulePath,
+        line: lineNum,
+      };
+
+      if (symbolsStr) {
+        // Parse { x, y as z } into ['x', 'y']
+        const symbols = symbolsStr
+          .replace(/[{}]/g, '')
+          .split(',')
+          .map(s => s.trim().split(/\s+as\s+/)[0]!.trim())
+          .filter(s => s.length > 0);
+        if (symbols.length > 0) {
+          item.symbols = symbols;
+        }
+      }
+
+      if (isTypeOnly) {
+        item.is_type_only = true;
+      }
+
+      imports.push(item);
+      continue;
+    }
+
+    // Dynamic import: import('module')
+    const dynamicImportMatch = line.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (dynamicImportMatch) {
+      imports.push({
+        module: dynamicImportMatch[1]!,
+        line: lineNum,
+        is_dynamic: true,
+      });
+      continue;
+    }
+
+    // CommonJS: require('module')
+    const requireMatch = line.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (requireMatch) {
+      imports.push({
+        module: requireMatch[1]!,
+        line: lineNum,
+      });
+    }
+  }
+
+  return imports;
+}
+
+/**
+ * Handle lsp_file_imports tool call.
+ * Returns imports/dependencies of a file by analyzing the content.
+ */
+export async function handleFileImports(
+  input: FileImportsInput
+): Promise<FileImportsResponse> {
+  const { file_path } = input;
+
+  const { content } = await prepareFile(file_path);
+
+  const imports = extractImportsFromContent(content);
+
+  return {
+    file: file_path,
+    imports,
+    note: 'Imports extracted from file content using pattern matching. Supports ES modules, CommonJS require(), and dynamic imports.',
+  };
+}
+
+/**
+ * Handle lsp_related_files tool call.
+ * Shows files that import or are imported by a given file.
+ */
+export async function handleRelatedFiles(
+  input: RelatedFilesInput
+): Promise<RelatedFilesResponse> {
+  const { file_path, relationship } = input;
+  const ctx = getToolContext();
+
+  const result: RelatedFilesResponse = {
+    file: file_path,
+    imports: [],
+    imported_by: [],
+    note: 'Import relationships based on file content analysis. Only files opened in this session are included in imported_by.',
+  };
+
+  // Get files this file imports
+  if (relationship === 'imports' || relationship === 'all') {
+    const { content } = await prepareFile(file_path);
+    const importItems = extractImportsFromContent(content);
+
+    // Filter to relative imports only (local files)
+    result.imports = importItems
+      .filter(imp => imp.module.startsWith('.') || imp.module.startsWith('/'))
+      .map(imp => imp.module);
+  }
+
+  // Get files that import this file (requires scanning opened documents)
+  if (relationship === 'imported_by' || relationship === 'all') {
+    // Get all cached URIs from diagnostics (these are files we've opened)
+    const openedUris = ctx.diagnosticsCache.getUris();
+
+    for (const uri of openedUris) {
+      const otherPath = uriToPath(uri);
+      if (otherPath === file_path) continue;
+
+      const otherContent = ctx.documentManager.getContent(uri);
+      if (!otherContent) continue;
+
+      const otherImports = extractImportsFromContent(otherContent);
+
+      // Check if any import points to our file
+      const importsSelf = otherImports.some(imp => {
+        // Simple check: does the import path end with our filename?
+        const targetName = file_path.split('/').pop()?.replace(/\.(ts|tsx|js|jsx)$/, '');
+        if (!targetName) return false;
+        return imp.module.includes(targetName);
+      });
+
+      if (importsSelf) {
+        result.imported_by.push(otherPath);
+      }
+    }
+  }
+
+  return result;
 }

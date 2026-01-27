@@ -52,6 +52,28 @@ export async function prepareFile(filePath: string): Promise<{
 }
 
 /**
+ * Extract symbol name from file content given a range.
+ */
+function extractSymbolName(content: string, range: { start: { line: number; character: number }; end: { line: number; character: number } }): string | undefined {
+  if (!content) return undefined;
+
+  const lines = content.split('\n');
+  const startLine = lines[range.start.line];
+  if (!startLine) return undefined;
+
+  // For single-line ranges, extract the text
+  if (range.start.line === range.end.line) {
+    const symbol = startLine.substring(range.start.character, range.end.character);
+    // Only return if it looks like a valid identifier
+    if (symbol && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(symbol)) {
+      return symbol;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Convert an LSP Location to our LocationResult format.
  */
 export async function locationToResult(
@@ -72,8 +94,9 @@ export async function locationToResult(
 
   const { start, end } = fromLspRange(location.range, fileContent);
   const contextLine = getLineContent(fileContent, start.line) ?? '';
+  const symbolName = extractSymbolName(fileContent, location.range);
 
-  return {
+  const result: LocationResult = {
     path: filePath,
     line: start.line,
     column: start.column,
@@ -81,6 +104,12 @@ export async function locationToResult(
     end_column: end.column,
     context: contextLine.trim(),
   };
+
+  if (symbolName) {
+    result.symbol_name = symbolName;
+  }
+
+  return result;
 }
 
 /**
@@ -102,7 +131,11 @@ export async function locationLinkToResult(
   const { start, end } = fromLspRange(range, fileContent);
   const contextLine = getLineContent(fileContent, start.line) ?? '';
 
-  return {
+  // Extract symbol name from the selection range (more precise than target range)
+  const selectionRange = link.targetSelectionRange ?? link.targetRange;
+  const symbolName = extractSymbolName(fileContent, selectionRange);
+
+  const result: LocationResult = {
     path: filePath,
     line: start.line,
     column: start.column,
@@ -110,6 +143,12 @@ export async function locationLinkToResult(
     end_column: end.column,
     context: contextLine.trim(),
   };
+
+  if (symbolName) {
+    result.symbol_name = symbolName;
+  }
+
+  return result;
 }
 
 /**
