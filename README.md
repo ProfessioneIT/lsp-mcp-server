@@ -157,6 +157,75 @@ In Claude Code, ask:
 
 You should see a response showing the server is running.
 
+### 4. Enforce LSP Tool Usage (Recommended)
+
+To make Claude Code consistently prefer LSP tools over alternatives like `Grep` and `Glob` for code navigation, add instructions to your global `~/.claude/CLAUDE.md` file:
+
+```markdown
+## LSP Server - REQUIRED FIRST STEP
+
+**BEFORE any code analysis, navigation, or codebase exploration, you MUST:**
+
+1. Run `lsp_server_status` to check running servers
+2. If the relevant language server is NOT running → run `lsp_start_server` immediately
+3. ONLY AFTER the LSP server is running, proceed with analysis
+
+This is a hard requirement, not a preference. Do NOT skip this step.
+
+## LSP Tool Requirements
+
+When LSP MCP tools are available, you MUST use them instead of alternatives:
+
+| Task | REQUIRED Tool | FORBIDDEN Alternatives |
+|------|---------------|----------------------|
+| Find where X is defined | `lsp_goto_definition` | Grep, Read, Glob |
+| Find where X is used | `lsp_find_references` | Grep |
+| Find symbol by name | `lsp_workspace_symbols` | Glob, Grep |
+| Understand file structure | `lsp_document_symbols` | Read entire file |
+| Get type information | `lsp_hover` | Reading source code |
+| Find implementations | `lsp_find_implementations` | Grep |
+| Understand module API | `lsp_file_exports` | Read entire file |
+| Check for errors | `lsp_diagnostics` | Running compiler manually |
+
+## Prohibited Patterns
+
+When LSP is available, NEVER do these:
+
+- NEVER use `Grep` to find function/class/symbol definitions
+- NEVER use `Grep` to find where a symbol is referenced
+- NEVER use `Glob` to find files containing a symbol name
+- NEVER use `Read` to scan through a file looking for definitions
+- NEVER use `Bash` with grep/rg/find for code navigation
+
+These tools are still appropriate for:
+- Searching for text/strings (not code symbols)
+- Reading configuration files
+- Reading documentation files
+- File operations unrelated to code navigation
+
+## LSP Tool Quick Reference
+
+```
+lsp_server_status          # Check what's running
+lsp_start_server           # Start a language server
+lsp_goto_definition        # Jump to where symbol is defined
+lsp_find_references        # Find all usages of a symbol
+lsp_workspace_symbols      # Search symbols across project
+lsp_document_symbols       # Get outline of a file
+lsp_hover                  # Get type/docs for symbol
+lsp_find_implementations   # Find concrete implementations
+lsp_file_exports           # Get public API of a module
+lsp_diagnostics            # Get errors/warnings for a file
+lsp_smart_search           # Combined: definition + refs + hover
+lsp_find_symbol            # Find symbol by name with full context
+```
+```
+
+This ensures Claude Code will:
+- Always start the LSP server before analyzing code
+- Use semantic LSP tools instead of text-based search for code navigation
+- Fall back to Grep/Glob only for non-code searches (strings, config files, docs)
+
 ## Available Tools
 
 ### Navigation Tools
