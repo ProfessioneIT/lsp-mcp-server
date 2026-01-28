@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **lsp-mcp-server** is an MCP (Model Context Protocol) server that bridges Claude Code to Language Server Protocol (LSP) servers. It enables semantic code intelligence capabilities like go-to-definition, find-references, hover information, workspace symbol search, diagnostics, completion, rename, code actions, call/type hierarchy, and document formatting.
 
-**Current State:** Fully implemented. The project contains a working MCP server with all 19 tools.
-
 ## Build Commands
 
 ```bash
@@ -15,15 +13,21 @@ npm run build        # Compile TypeScript to dist/
 npm run dev          # Watch mode for development
 npm start            # Run the compiled server (node dist/index.js)
 npm test             # Run unit tests (vitest)
-npm run test:integration  # Run integration tests
 npm run lint         # Run ESLint
 npm run typecheck    # Type-check without emitting
 ```
 
-## Testing
+### Running a Single Test
 
 ```bash
-# Interactive tool testing with MCP Inspector
+npm test -- tests/unit/position.test.ts           # Run specific test file
+npm test -- -t "converts 1-indexed"               # Run tests matching pattern
+npm run test:watch                                # Watch mode for development
+```
+
+### Interactive Testing with MCP Inspector
+
+```bash
 npx @modelcontextprotocol/inspector node dist/index.js
 ```
 
@@ -32,110 +36,63 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ```
 Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Language Servers
                                    │
-                                   ├── Connection Manager (keyed by language + workspace root)
-                                   ├── Document Manager (per-URI versioning, concurrent access)
-                                   ├── Diagnostics Cache (stores pushed diagnostics)
-                                   └── Tool Handlers (19 MCP tools)
+                                   ├── ConnectionManager (keyed by serverId + workspaceRoot)
+                                   ├── DocumentManager (per-URI versioning, thread-safe open/close)
+                                   ├── DiagnosticsCache (stores pushed publishDiagnostics)
+                                   └── Tool Handlers (24 MCP tools)
 ```
 
-### Key Architecture Decisions
+### Key Design Decisions
 
-- **Multi-root workspace support:** Server instances keyed by `(languageId, workspaceRoot)` pairs for monorepo support
-- **Diagnostics are push-based:** Cached from `publishDiagnostics` notifications, not requested on-demand
-- **1-indexed positions:** All tool inputs/outputs use 1-indexed line/column for human readability
-- **UTF-16 handling:** Proper conversion for emoji and non-BMP characters via position encoding negotiation
+1. **Server Instance Keying**: Servers are keyed by `(serverId, workspaceRoot)` pairs via `createServerKey()` in `src/utils/workspace.ts`. This enables proper monorepo support where each workspace can have its own language server instance.
 
-### Source Structure
+2. **Diagnostics are Push-Based**: Unlike request-based LSP features, diagnostics come from `publishDiagnostics` notifications. The `LSPClientImpl` caches these internally, and `DiagnosticsCache` provides a global cache. Always open a document first to trigger diagnostics.
 
-```
-src/
-├── index.ts                    # MCP server entry point with tool registration
-├── types.ts                    # TypeScript interfaces and error types
-├── constants.ts                # Configuration defaults, symbol kinds, severities
-├── config.ts                   # Configuration loading and defaults
-├── utils/
-│   ├── position.ts             # UTF-16 <-> UTF-32 position conversion
-│   ├── uri.ts                  # File path <-> URI conversion
-│   ├── workspace.ts            # Workspace root detection
-│   └── logger.ts               # Logging utilities
-├── tools/                      # MCP tool implementations (19 tools)
-│   ├── definition.ts           # lsp_goto_definition, lsp_goto_type_definition
-│   ├── references.ts           # lsp_find_references, lsp_find_implementations
-│   ├── hover.ts                # lsp_hover, lsp_signature_help
-│   ├── symbols.ts              # lsp_document_symbols, lsp_workspace_symbols
-│   ├── diagnostics.ts          # lsp_diagnostics
-│   ├── completion.ts           # lsp_completions
-│   ├── rename.ts               # lsp_rename
-│   ├── code-actions.ts         # lsp_code_actions
-│   ├── call-hierarchy.ts       # lsp_call_hierarchy
-│   ├── type-hierarchy.ts       # lsp_type_hierarchy
-│   ├── formatting.ts           # lsp_format_document
-│   ├── smart-search.ts         # lsp_smart_search
-│   ├── server.ts               # lsp_server_status, lsp_start_server, lsp_stop_server
-│   ├── utils.ts                # Shared tool utilities
-│   ├── context.ts              # Tool context (shared services)
-│   └── index.ts                # Tool exports
-├── services/
-│   ├── lsp-client.ts           # LSP client wrapper (JSON-RPC, initialization)
-│   ├── connection-manager.ts   # Multi-instance pool, routing by language + root
-│   ├── document-manager.ts     # didOpen/didChange/didClose, content caching
-│   ├── diagnostics-cache.ts    # Stores pushed diagnostics
-│   ├── language-detector.ts    # File extension to language server mapping
-│   └── index.ts                # Service exports
-└── schemas/
-    └── tool-schemas.ts         # Zod validation schemas for all tools
-```
+3. **1-Indexed Positions**: All tool inputs/outputs use 1-indexed line/column for human readability. The `toLspPosition()` and `fromLspPosition()` functions in `src/utils/position.ts` handle conversion to LSP's 0-indexed format.
 
-### MCP Tools (19 total)
+4. **UTF-16 Position Handling**: LSP uses UTF-16 code units for character positions (relevant for emoji and non-BMP characters). Position utilities handle this conversion.
 
-| Tool | Purpose |
-|------|---------|
-| `lsp_goto_definition` | Navigate to symbol definition |
-| `lsp_goto_type_definition` | Navigate to type definition of a symbol |
-| `lsp_find_references` | Find all symbol references (with pagination) |
-| `lsp_find_implementations` | Find implementations of interface/abstract method |
-| `lsp_hover` | Get type info and documentation |
-| `lsp_signature_help` | Get function signature at call site |
-| `lsp_document_symbols` | Get symbols in a file |
-| `lsp_workspace_symbols` | Search symbols across workspace (with kind filter) |
-| `lsp_diagnostics` | Get cached errors/warnings |
-| `lsp_completions` | Get code completion suggestions |
-| `lsp_rename` | Rename symbol (with dry_run preview mode) |
-| `lsp_code_actions` | Get/apply quick fixes and refactorings |
-| `lsp_call_hierarchy` | Get incoming/outgoing call hierarchy |
-| `lsp_type_hierarchy` | Get supertypes/subtypes hierarchy |
-| `lsp_format_document` | Format document using language server |
-| `lsp_smart_search` | Combined hover + definition + references search |
-| `lsp_server_status` | Check language server status |
-| `lsp_start_server` | Manually start a server |
-| `lsp_stop_server` | Stop a running server |
+5. **Global Tool Context**: Tool handlers access shared services (ConnectionManager, DocumentManager, DiagnosticsCache, Config) via the global `ToolContext` set in `src/tools/context.ts`. This is initialized in `src/index.ts` before server startup.
 
-### Default Language Server Support
+### Data Flow for a Typical Tool Call
 
-- TypeScript/JavaScript: `typescript-language-server --stdio`
-- Python: `pylsp`
-- Rust: `rust-analyzer`
-- Go: `gopls serve`
+1. MCP request arrives at `src/index.ts` via `CallToolRequestSchema` handler
+2. Input validated with Zod schema from `src/schemas/tool-schemas.ts`
+3. Tool handler in `src/tools/` uses `getToolContext()` to access services
+4. `connectionManager.getClientForFile(filePath)` gets/creates LSP client:
+   - Detects language from file extension
+   - Finds workspace root via `findWorkspaceRootForLanguage()`
+   - Returns existing client or creates new one (with initialization lock)
+5. `documentManager.ensureOpen(uri, client)` opens file if needed
+6. Tool sends LSP request via client, converts response positions, returns JSON
 
-## Key Dependencies
+### Adding a New Tool
 
-- `@modelcontextprotocol/sdk` - MCP protocol implementation
-- `vscode-languageserver-protocol` - LSP protocol types
-- `vscode-jsonrpc` - JSON-RPC messaging (used directly, not vscode-languageclient)
-- `zod` - Runtime schema validation
-- `vitest` - Testing framework
+1. Add Zod schema to `src/schemas/tool-schemas.ts`
+2. Create handler function in appropriate `src/tools/*.ts` file
+3. Export handler from `src/tools/index.ts`
+4. Add tool definition to `TOOLS` array in `src/index.ts`
+5. Add handler to `toolHandlers` map in `src/index.ts`
+
+### Server Lifecycle
+
+- Servers auto-start on first request when `autoStart: true` (default)
+- Crashed servers restart with exponential backoff (max 3 attempts in 5 minutes)
+- Idle servers stop after `idleTimeout` (default 30 minutes)
+- `ConnectionManager.shutdownAll()` called on SIGINT/SIGTERM
 
 ## Configuration
 
-Configuration via JSON file (path in `LSP_CONFIG_PATH` env var). Key settings:
-- Per-server: command, args, file extensions, language IDs, root patterns
-- Global: `requestTimeout` (30s), `autoStart` (true), `logLevel`, `idleTimeout` (30min)
+Configuration via JSON file (path in `LSP_CONFIG_PATH` env var). See `src/config.ts` for loading logic and `src/constants.ts` for defaults.
 
-Workspace root is auto-detected by walking up from file path looking for root markers (`package.json`, `tsconfig.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `.git`). Override with `LSP_WORKSPACE_ROOT` env var.
+Workspace root auto-detected by walking up from file path looking for root markers (`package.json`, `tsconfig.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `.git`). Override with `LSP_WORKSPACE_ROOT` env var.
 
 ## Error Handling
 
-- Binary files rejected via extension blocklist + null byte detection
-- Server crashes trigger automatic restart with exponential backoff (max 3 retries)
-- Errors include installation commands for missing language servers
-- `prepareRename` validation before rename attempts
+Custom `LSPError` class in `src/types.ts` provides structured errors with:
+- Error code (enum `LSPErrorCode`)
+- Human-readable message
+- Actionable suggestion
+- Optional details (server_id, file_path, install_command)
+
+Tool handlers catch and convert errors to this format. Binary files are rejected via extension blocklist + null byte detection in `src/utils/uri.ts`.
