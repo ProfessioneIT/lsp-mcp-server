@@ -716,10 +716,12 @@ export class LSPClientImpl implements ILSPClient {
     const tokenSource = new CancellationTokenSource();
     this.pendingRequests.set(id, tokenSource);
 
+    let timeoutId: NodeJS.Timeout | undefined;
+
     try {
       // Create a promise that rejects on timeout
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           reject(new LSPError(
             LSPErrorCode.SERVER_TIMEOUT,
             `Request timed out after ${this.timeout}ms`,
@@ -737,6 +739,10 @@ export class LSPClientImpl implements ILSPClient {
 
       return result as R;
     } finally {
+      // Clear timeout to prevent timer leak
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       this.pendingRequests.delete(id);
     }
   }

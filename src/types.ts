@@ -568,6 +568,8 @@ export interface CodeActionResult {
 export interface CodeActionsResponse {
   actions: CodeActionResult[];
   total_count: number;
+  /** The action that was applied (if apply=true and successful) */
+  applied?: CodeActionResult;
 }
 
 // ============================================================================

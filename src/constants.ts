@@ -147,6 +147,9 @@ export const BINARY_EXTENSIONS = new Set([
 /** Number of bytes to read for binary detection */
 export const BINARY_CHECK_BYTES = 8192;
 
+/** Maximum file size to read (10 MB) */
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 // ============================================================================
 // Workspace Root Detection
 // ============================================================================

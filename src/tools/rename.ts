@@ -25,7 +25,7 @@ import type { RenameInput } from '../schemas/tool-schemas.js';
 import type { RenameResponse, RenameEdit } from '../types.js';
 import { prepareFile, toPosition } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
-import { uriToPath, readFile } from '../utils/uri.js';
+import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 import * as fs from 'fs/promises';
 
@@ -187,8 +187,12 @@ export async function handleRename(
 
   // Apply changes if not dry run
   if (!dry_run) {
+    const workspaceRoot = client.workspaceRoot;
+
     for (const [fileUri, edits] of Object.entries(workspaceEdit.changes)) {
       const filePath = uriToPath(fileUri);
+      // Validate file is within workspace to prevent writing outside it
+      validatePathWithinWorkspace(filePath, workspaceRoot);
       await applyEditsToFile(filePath, edits);
     }
   }

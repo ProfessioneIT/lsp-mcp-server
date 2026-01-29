@@ -81,6 +81,15 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
 - Idle servers stop after `idleTimeout` (default 30 minutes)
 - `ConnectionManager.shutdownAll()` called on SIGINT/SIGTERM
 
+## Security
+
+The following security measures are enforced:
+
+- **Absolute Path Validation**: All file paths must be absolute (validated in `src/schemas/tool-schemas.ts`)
+- **Workspace Boundary Validation**: File modifications (rename, format, code actions) use `validatePathWithinWorkspace()` in `src/utils/uri.ts` to prevent writing outside the workspace root
+- **File Size Limits**: Files larger than `MAX_FILE_SIZE_BYTES` (10 MB, defined in `src/constants.ts`) are rejected to prevent memory exhaustion
+- **No Shell Execution**: Language servers are spawned with `shell: false` to prevent command injection
+
 ## Configuration
 
 Configuration via JSON file (path in `LSP_CONFIG_PATH` env var). See `src/config.ts` for loading logic and `src/constants.ts` for defaults.

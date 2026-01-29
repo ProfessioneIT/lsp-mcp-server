@@ -24,7 +24,7 @@ import type { TextEdit, FormattingOptions } from 'vscode-languageserver-protocol
 import type { FormatDocumentInput } from '../schemas/tool-schemas.js';
 import type { FormatDocumentResponse, FormatEdit } from '../types.js';
 import { prepareFile } from './utils.js';
-import { readFile } from '../utils/uri.js';
+import { readFile, validatePathWithinWorkspace } from '../utils/uri.js';
 import * as fs from 'fs/promises';
 
 /**
@@ -108,6 +108,8 @@ export async function handleFormatDocument(
 
   // Apply changes if requested
   if (apply) {
+    // Validate file is within workspace before writing
+    validatePathWithinWorkspace(file_path, client.workspaceRoot);
     const currentContent = await readFile(file_path);
     const newContent = applyEdits(currentContent, result);
     await fs.writeFile(file_path, newContent, 'utf-8');

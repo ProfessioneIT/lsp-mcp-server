@@ -23,9 +23,11 @@
 import type { CodeAction, Command, WorkspaceEdit, TextEdit } from 'vscode-languageserver-protocol';
 import type { CodeActionsInput } from '../schemas/tool-schemas.js';
 import type { CodeActionsResponse, CodeActionResult, DiagnosticResult } from '../types.js';
+import { LSPError, LSPErrorCode } from '../types.js';
 import { prepareFile, toPosition, getDiagnosticSeverityName } from './utils.js';
 import { fromLspRange } from '../utils/position.js';
-import { uriToPath } from '../utils/uri.js';
+import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
+import * as fs from 'fs/promises';
 
 /**
  * Check if the action is a CodeAction (not just a Command).
@@ -97,12 +99,72 @@ function convertDiagnostic(diag: { range: { start: { line: number; character: nu
 }
 
 /**
+ * Apply edits from a WorkspaceEdit to files.
+ */
+async function applyWorkspaceEdit(edit: WorkspaceEdit, workspaceRoot: string): Promise<number> {
+  if (!edit.changes) {
+    return 0;
+  }
+
+  let filesModified = 0;
+
+  for (const [fileUri, edits] of Object.entries(edit.changes)) {
+    const filePath = uriToPath(fileUri);
+
+    // Validate file is within workspace before writing
+    validatePathWithinWorkspace(filePath, workspaceRoot);
+
+    // Read current content
+    const content = await readFile(filePath);
+
+    // Sort edits by position in reverse order (apply from end to start)
+    const sortedEdits = [...edits].sort((a, b) => {
+      if (a.range.start.line !== b.range.start.line) {
+        return b.range.start.line - a.range.start.line;
+      }
+      return b.range.start.character - a.range.start.character;
+    });
+
+    // Apply edits
+    const lines = content.split('\n');
+    let currentContent = content;
+
+    for (const edit of sortedEdits) {
+      // Calculate byte offsets
+      let startOffset = 0;
+      for (let i = 0; i < edit.range.start.line; i++) {
+        startOffset += (lines[i]?.length ?? 0) + 1; // +1 for newline
+      }
+      startOffset += edit.range.start.character;
+
+      let endOffset = 0;
+      for (let i = 0; i < edit.range.end.line; i++) {
+        endOffset += (lines[i]?.length ?? 0) + 1;
+      }
+      endOffset += edit.range.end.character;
+
+      // Apply the edit
+      currentContent =
+        currentContent.substring(0, startOffset) +
+        edit.newText +
+        currentContent.substring(endOffset);
+    }
+
+    // Write back
+    await fs.writeFile(filePath, currentContent, 'utf-8');
+    filesModified++;
+  }
+
+  return filesModified;
+}
+
+/**
  * Handle lsp_code_actions tool call.
  */
 export async function handleCodeActions(
   input: CodeActionsInput
 ): Promise<CodeActionsResponse> {
-  const { file_path, start_line, start_column, end_line, end_column, kinds } = input;
+  const { file_path, start_line, start_column, end_line, end_column, kinds, apply, action_index } = input;
 
   const { client, uri, content } = await prepareFile(file_path);
 
@@ -137,8 +199,54 @@ export async function handleCodeActions(
     };
   }
 
+  // If apply is requested, apply the selected action
+  let applied = false;
+  let appliedAction: CodeActionResult | undefined;
+
+  if (apply) {
+    const indexToApply = action_index ?? 0;
+
+    if (indexToApply < 0 || indexToApply >= result.length) {
+      throw new LSPError(
+        LSPErrorCode.INVALID_POSITION,
+        `Invalid action index: ${indexToApply}. Available actions: 0-${result.length - 1}`,
+        'Specify a valid action_index within the range of available actions.',
+        { file_path }
+      );
+    }
+
+    const actionToApply = result[indexToApply]!; // Safe: bounds checked above
+
+    if (isCodeAction(actionToApply) && actionToApply.edit) {
+      await applyWorkspaceEdit(actionToApply.edit, client.workspaceRoot);
+      applied = true;
+    } else if (isCodeAction(actionToApply) && actionToApply.command) {
+      // Commands cannot be applied directly - they require LSP executeCommand
+      throw new LSPError(
+        LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+        `Action "${actionToApply.title}" requires command execution which is not supported`,
+        'This action cannot be applied automatically. It requires IDE command execution.',
+        { file_path }
+      );
+    } else if (!isCodeAction(actionToApply)) {
+      throw new LSPError(
+        LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+        `Action "${actionToApply.title}" is a command-only action`,
+        'This action cannot be applied automatically. It requires IDE command execution.',
+        { file_path }
+      );
+    } else {
+      throw new LSPError(
+        LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+        `Action "${actionToApply.title}" has no edit to apply`,
+        'This action does not provide file edits.',
+        { file_path }
+      );
+    }
+  }
+
   // Convert to our format
-  const actions: CodeActionResult[] = result.map(action => {
+  const actions: CodeActionResult[] = result.map((action, index) => {
     if (isCodeAction(action)) {
       const actionResult: CodeActionResult = {
         title: action.title,
@@ -171,6 +279,11 @@ export async function handleCodeActions(
         }
       }
 
+      // Track the applied action
+      if (applied && index === (action_index ?? 0)) {
+        appliedAction = actionResult;
+      }
+
       return actionResult;
     } else {
       // It's just a Command
@@ -188,8 +301,14 @@ export async function handleCodeActions(
     }
   });
 
-  return {
+  const response: CodeActionsResponse = {
     actions,
     total_count: actions.length,
   };
+
+  if (applied && appliedAction) {
+    response.applied = appliedAction;
+  }
+
+  return response;
 }

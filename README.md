@@ -18,6 +18,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 - **Type Hierarchy** - Explore class inheritance and interface implementations
 - **Format Document** - Format code using the language server's formatter
 - **Smart Search** - Comprehensive symbol analysis in a single call
+- **File Analysis** - Explore imports, exports, and file relationships
 
 ```
 ┌─────────────┐      ┌──────────────────┐      ┌───────────────────┐
@@ -29,7 +30,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 
 ## Features
 
-- **19 MCP Tools** for comprehensive code intelligence
+- **24 MCP Tools** for comprehensive code intelligence
 - **8 Languages Supported** out of the box:
   - TypeScript / JavaScript
   - Python
@@ -45,6 +46,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 - **Safe Rename** - Preview changes before applying with dry-run mode
 - **Automatic Server Management** - Servers start on-demand and restart on crash
 - **Configurable** - Customize language servers, timeouts, and more
+- **Security Features** - File size limits, workspace boundary validation, absolute path enforcement
 
 ## Installation
 
@@ -126,7 +128,7 @@ Create or edit the `.mcp.json` file in your home directory:
       "command": "node",
       "args": ["/absolute/path/to/lsp-mcp-server/dist/index.js"],
       "env": {
-        "LSP_MCP_LOG_LEVEL": "info"
+        "LSP_LOG_LEVEL": "info"
       }
     }
   }
@@ -180,12 +182,13 @@ When LSP MCP tools are available, you MUST use them instead of alternatives:
 |------|---------------|----------------------|
 | Find where X is defined | `lsp_goto_definition` | Grep, Read, Glob |
 | Find where X is used | `lsp_find_references` | Grep |
-| Find symbol by name | `lsp_workspace_symbols` | Glob, Grep |
+| Find symbol by name | `lsp_workspace_symbols` or `lsp_find_symbol` | Glob, Grep |
 | Understand file structure | `lsp_document_symbols` | Read entire file |
 | Get type information | `lsp_hover` | Reading source code |
 | Find implementations | `lsp_find_implementations` | Grep |
 | Understand module API | `lsp_file_exports` | Read entire file |
 | Check for errors | `lsp_diagnostics` | Running compiler manually |
+| See file dependencies | `lsp_file_imports` or `lsp_related_files` | Grep for imports |
 
 ## Prohibited Patterns
 
@@ -209,13 +212,24 @@ These tools are still appropriate for:
 lsp_server_status          # Check what's running
 lsp_start_server           # Start a language server
 lsp_goto_definition        # Jump to where symbol is defined
+lsp_goto_type_definition   # Jump to type definition
 lsp_find_references        # Find all usages of a symbol
+lsp_find_implementations   # Find concrete implementations
 lsp_workspace_symbols      # Search symbols across project
 lsp_document_symbols       # Get outline of a file
 lsp_hover                  # Get type/docs for symbol
-lsp_find_implementations   # Find concrete implementations
-lsp_file_exports           # Get public API of a module
+lsp_signature_help         # Get function parameter hints
+lsp_completions            # Get code completions
 lsp_diagnostics            # Get errors/warnings for a file
+lsp_workspace_diagnostics  # Get errors/warnings across project
+lsp_file_exports           # Get public API of a module
+lsp_file_imports           # Get imports/dependencies of a file
+lsp_related_files          # Find connected files (imports/imported by)
+lsp_rename                 # Rename symbol across codebase
+lsp_code_actions           # Get/apply quick fixes and refactorings
+lsp_call_hierarchy         # See callers and callees
+lsp_type_hierarchy         # See type inheritance
+lsp_format_document        # Format code
 lsp_smart_search           # Combined: definition + refs + hover
 lsp_find_symbol            # Find symbol by name with full context
 ```
@@ -367,6 +381,80 @@ Output:
 
 **Example prompt:** "Search for all classes containing 'Service' in the workspace"
 
+#### `lsp_find_symbol`
+Find a symbol by name and get comprehensive information about it - no file path needed.
+
+```
+Input:
+  - name: Symbol name to search for (supports fuzzy matching)
+  - kind: Filter to specific symbol kind (optional): Class, Function, Interface, etc.
+  - include: Array of what to include: 'hover', 'definition', 'references', 'implementations', 'incoming_calls', 'outgoing_calls' (default: ['hover', 'definition', 'references'])
+  - references_limit: Maximum references to return (default: 20)
+
+Output:
+  - query: The symbol that was searched for
+  - match: The best matching symbol found
+  - matches_found: Number of total matches
+  - definition: Where the symbol is defined
+  - hover: Type information and documentation
+  - references: All usages of the symbol
+  - implementations: Implementations (for interfaces)
+  - incoming_calls: Functions that call this
+  - outgoing_calls: Functions this calls
+```
+
+**Example prompt:** "Find the UserService class and show me all its references"
+
+### File Analysis Tools
+
+#### `lsp_file_exports`
+Get the public API surface of a file - all exported functions, classes, interfaces, and variables.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - include_signatures: Include type signatures from hover (default: true, slower but more informative)
+
+Output:
+  - file: The file path
+  - exports: Array of exported items with name, kind, line, column, and signature
+  - note: Additional information
+```
+
+**Example prompt:** "What does /project/src/utils/index.ts export?"
+
+#### `lsp_file_imports`
+Get all imports and dependencies of a file.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+
+Output:
+  - file: The file path
+  - imports: Array of imports with module, line, symbols, is_type_only, is_dynamic
+  - note: Additional information
+```
+
+**Example prompt:** "What modules does /project/src/api/client.ts import?"
+
+#### `lsp_related_files`
+Find files connected to a given file - what it imports and what imports it.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - relationship: Which relationships to include: 'imports', 'imported_by', or 'all' (default: 'all')
+
+Output:
+  - file: The file path
+  - imports: Array of files this file imports
+  - imported_by: Array of files that import this file
+  - note: Additional information
+```
+
+**Example prompt:** "What files depend on /project/src/services/auth.ts?"
+
 ### Diagnostic Tools
 
 #### `lsp_diagnostics`
@@ -384,6 +472,26 @@ Output:
 ```
 
 **Example prompt:** "Show me all errors in /project/src/index.ts"
+
+#### `lsp_workspace_diagnostics`
+Get diagnostics across all open files in the workspace.
+
+```
+Input:
+  - severity_filter: Filter by severity - 'all', 'error', 'warning', 'info', 'hint' (default: 'all')
+  - limit: Maximum diagnostics to return (default: 50, max: 200)
+  - group_by: How to group results - 'file' or 'severity' (default: 'file')
+
+Output:
+  - items: Array of diagnostics with file, line, column, severity, message, and context
+  - total_count: Total diagnostics found
+  - returned_count: Number returned (may be limited)
+  - files_affected: Number of files with diagnostics
+  - summary: Count of errors, warnings, info, and hints
+  - note: Information about diagnostic caching
+```
+
+**Example prompt:** "Show me all errors across the entire project"
 
 ### Completion Tools
 
@@ -428,25 +536,28 @@ Output:
 **Example prompt:** "Rename the function 'getUserData' to 'fetchUserData' at line 20 in /project/src/api.ts (dry run first)"
 
 #### `lsp_code_actions`
-Get available code actions (refactorings, quick fixes) at a position or range.
+Get available code actions (refactorings, quick fixes) at a position or range, and optionally apply them.
 
 ```
 Input:
   - file_path: Absolute path to the source file
-  - line: Start line number (1-indexed)
-  - column: Start column number (1-indexed)
+  - start_line: Start line number (1-indexed)
+  - start_column: Start column number (1-indexed)
   - end_line: End line number (optional, defaults to start line)
   - end_column: End column number (optional, defaults to start column)
   - kinds: Filter by action kinds (optional): quickfix, refactor, refactor.extract, refactor.inline, source.organizeImports, etc.
-  - apply: Apply the action (default: false)
-  - action_index: Index of action to apply (default: 0)
+  - apply: If true, apply the action at action_index (default: false)
+  - action_index: Index of action to apply when apply=true (default: 0)
 
 Output:
   - actions: Array of available code actions with title, kind, and edits
-  - applied: Whether an action was applied
+  - total_count: Number of available actions
+  - applied: The action that was applied (if apply=true and successful)
 ```
 
 **Example prompt:** "What refactoring options are available for the function at line 50 in /project/src/utils.ts?"
+
+**Example prompt:** "Apply the first quick fix for the error at line 15 in /project/src/api.ts"
 
 #### `lsp_format_document`
 Format a document using the language server's formatting capabilities.
@@ -605,6 +716,8 @@ Create a configuration file at one of these locations (in order of priority):
 3. `~/.config/lsp-mcp/config.json` (XDG config)
 4. `~/.lsp-mcp.json` (home directory)
 
+Or set `LSP_CONFIG_PATH` environment variable to specify a custom path.
+
 **Example configuration:**
 
 ```json
@@ -663,10 +776,18 @@ Each server in the `servers` array has:
 
 | Variable | Description |
 |----------|-------------|
-| `LSP_MCP_LOG_LEVEL` | Override log level (debug, info, warn, error) |
-| `LSP_MCP_REQUEST_TIMEOUT` | Override request timeout in milliseconds |
+| `LSP_LOG_LEVEL` | Override log level (debug, info, warn, error) |
 | `LSP_CONFIG_PATH` | Path to configuration file |
 | `LSP_WORKSPACE_ROOT` | Override workspace root detection |
+
+## Security Features
+
+lsp-mcp-server includes several security measures:
+
+- **Absolute Path Enforcement** - All file paths must be absolute to prevent path traversal attacks
+- **Workspace Boundary Validation** - File modifications (rename, format, code actions) are restricted to within the workspace root
+- **File Size Limits** - Files larger than 10 MB are rejected to prevent memory exhaustion
+- **No Shell Execution** - Language servers are spawned with `shell: false` to prevent command injection
 
 ## Usage Examples with Claude Code
 
@@ -686,7 +807,7 @@ Each server in the `servers` array has:
 
 > "Check /project/src/index.ts for any TypeScript errors using lsp_diagnostics"
 
-> "Show me all errors and warnings in /project/src/components/Form.tsx"
+> "Show me all errors and warnings across the entire project using lsp_workspace_diagnostics"
 
 ### Safe Refactoring
 
@@ -700,6 +821,16 @@ Each server in the `servers` array has:
 
 > "Search the workspace for all classes that contain 'Controller' in their name"
 
+> "Find the UserService class and tell me everything about it - definition, references, and what calls it"
+
+### File Analysis
+
+> "What does /project/src/utils/index.ts export?"
+
+> "What files depend on /project/src/services/auth.ts? Use lsp_related_files"
+
+> "Show me all the imports in /project/src/api/client.ts"
+
 ### Completions
 
 > "What methods are available on the object at line 30, column 5 in /project/src/app.ts? Use lsp_completions"
@@ -710,7 +841,7 @@ Each server in the `servers` array has:
 
 > "Organize imports in /project/src/components/App.tsx using lsp_code_actions with kinds filter for source.organizeImports"
 
-> "Apply the quick fix for the error at line 15 in /project/src/api.ts"
+> "Apply the first quick fix for the error at line 15 in /project/src/api.ts"
 
 ### Understanding Code Flow
 
@@ -755,7 +886,7 @@ npm install -g typescript-language-server typescript
 **Issue:** Server keeps crashing and restarting
 
 **Solution:**
-1. Check `LSP_MCP_LOG_LEVEL=debug` for detailed logs
+1. Check `LSP_LOG_LEVEL=debug` for detailed logs
 2. Verify the language server is properly installed
 3. Check if the workspace has valid configuration (e.g., tsconfig.json for TypeScript)
 
@@ -765,13 +896,19 @@ npm install -g typescript-language-server typescript
 
 **Remember:** All positions are 1-indexed (first line is 1, first column is 1), not 0-indexed.
 
+### Path Errors
+
+**Issue:** "File path must be absolute" errors
+
+**Remember:** All file paths must be absolute (e.g., `/home/user/project/src/file.ts`, not `src/file.ts`).
+
 ### Timeout Errors
 
 **Issue:** Requests timing out
 
 **Solution:** Increase the timeout:
 ```bash
-export LSP_MCP_REQUEST_TIMEOUT=60000  # 60 seconds
+export LSP_REQUEST_TIMEOUT=60000  # 60 seconds
 ```
 
 Or in configuration:
@@ -780,6 +917,14 @@ Or in configuration:
   "requestTimeout": 60000
 }
 ```
+
+### File Too Large
+
+**Issue:** "File too large" errors
+
+**Explanation:** Files larger than 10 MB are rejected to prevent memory issues.
+
+**Solution:** Work with smaller files or split large files into modules.
 
 ## Development
 
@@ -817,7 +962,7 @@ npm run lint:fix     # Auto-fix issues
 
 ### Multi-root Workspace Support
 
-Server instances are keyed by `(languageId, workspaceRoot)` pairs. This means:
+Server instances are keyed by `(serverId, workspaceRoot)` pairs. This means:
 
 - Each workspace gets its own language server instance
 - Monorepos work correctly with multiple tsconfig.json files
@@ -829,7 +974,7 @@ Unlike other LSP features that are request-based, diagnostics are push-based:
 
 1. Language servers send `publishDiagnostics` notifications
 2. lsp-mcp-server caches these in memory
-3. `lsp_diagnostics` tool reads from the cache
+3. `lsp_diagnostics` and `lsp_workspace_diagnostics` tools read from the cache
 
 This means diagnostics are available immediately after files are opened, without an explicit request.
 
@@ -838,6 +983,10 @@ This means diagnostics are available immediately after files are opened, without
 - Servers start automatically when needed (if `autoStart: true`)
 - Crashed servers restart with exponential backoff (max 3 attempts in 5 minutes)
 - Idle servers shut down after the configured timeout
+
+## Version
+
+Current version: **1.1.0**
 
 ## License
 

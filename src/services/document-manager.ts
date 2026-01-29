@@ -155,6 +155,8 @@ export class DocumentManagerImpl implements IDocumentManager {
       }
 
       this.documents.delete(docKey);
+      // Clean up version counter to prevent memory leak
+      this.versionCounters.delete(uri);
       logger.debug(`Closed document: ${uri}`);
     }
   }

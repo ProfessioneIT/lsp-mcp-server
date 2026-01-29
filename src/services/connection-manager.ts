@@ -162,24 +162,13 @@ export class ConnectionManagerImpl implements IConnectionManager {
 
   /**
    * Detect workspace root for a file path.
+   * Note: This is a synchronous fallback. The actual async detection
+   * happens in getClientForFile using findWorkspaceRootForLanguage.
    */
-  detectWorkspaceRoot(filePath: string, serverId?: string): string {
+  detectWorkspaceRoot(filePath: string, _serverId?: string): string {
     const normalizedPath = normalizePath(filePath);
-    const ext = getExtension(normalizedPath);
-
-    // Find server config (currently unused, but reserved for future root pattern detection)
-    let _serverConfig: LSPServerConfig | undefined;
-
-    if (serverId) {
-      _serverConfig = this.config.servers.find(s => s.id === serverId);
-    } else {
-      _serverConfig = this.config.servers.find(s => s.extensions.includes(ext));
-    }
-
-    // This is sync, but we return a promise-based version from the interface
-    // For now, just return the file's directory as a fallback
-    // The actual detection happens in getClientForFile
-    // TODO: Use _serverConfig.rootPatterns for better workspace detection
+    // Return the file's directory as a synchronous fallback
+    // The actual workspace detection is async and happens in getClientForFile
     return normalizedPath;
   }
 

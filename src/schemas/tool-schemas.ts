@@ -21,6 +21,7 @@
  */
 
 import { z } from 'zod';
+import * as path from 'node:path';
 
 // ============================================================================
 // Common Schemas
@@ -28,6 +29,10 @@ import { z } from 'zod';
 
 const FilePathSchema = z.string()
   .min(1)
+  .refine(
+    (val) => path.isAbsolute(val),
+    { message: 'File path must be absolute' }
+  )
   .describe('Absolute path to the source file');
 
 const LineSchema = z.number()
@@ -180,6 +185,10 @@ export const StartServerSchema = z.object({
   server_id: z.string()
     .describe("Server ID from configuration (e.g., 'typescript', 'python')"),
   workspace_root: z.string()
+    .refine(
+      (val) => path.isAbsolute(val),
+      { message: 'Workspace root must be an absolute path' }
+    )
     .describe('Absolute path to the workspace/project root'),
 }).strict();
 
@@ -221,6 +230,14 @@ export const CodeActionsSchema = z.object({
   ]))
     .optional()
     .describe('Filter actions by kind (e.g., "quickfix", "refactor.extract")'),
+  apply: z.boolean()
+    .default(false)
+    .describe('If true, apply the action at action_index. If false, just list available actions.'),
+  action_index: z.number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Index of the action to apply (when apply=true). Defaults to 0 (first action).'),
 }).strict();
 
 // ============================================================================

@@ -22,7 +22,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BINARY_EXTENSIONS, BINARY_CHECK_BYTES } from '../constants.js';
+import { BINARY_EXTENSIONS, BINARY_CHECK_BYTES, MAX_FILE_SIZE_BYTES } from '../constants.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 
 /**
@@ -226,6 +226,26 @@ export async function readFile(filePath: string): Promise<string> {
     );
   }
 
+  // Check file size
+  try {
+    const stat = await fs.promises.stat(filePath);
+    if (stat.size > MAX_FILE_SIZE_BYTES) {
+      const sizeMB = (stat.size / (1024 * 1024)).toFixed(1);
+      const maxMB = (MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(0);
+      throw new LSPError(
+        LSPErrorCode.FILE_NOT_READABLE,
+        `File too large: ${filePath} (${sizeMB} MB)`,
+        `Maximum supported file size is ${maxMB} MB.`,
+        { file_path: filePath }
+      );
+    }
+  } catch (error) {
+    if (error instanceof LSPError) {
+      throw error;
+    }
+    // Continue if stat fails - readFile will fail with a better error
+  }
+
   // Check if binary
   if (await isBinaryFile(filePath)) {
     throw new LSPError(
@@ -319,4 +339,23 @@ export function isWithinDirectory(filePath: string, dirPath: string): boolean {
     : normalizedDir + path.sep;
 
   return normalizedFile.startsWith(dirWithSep) || normalizedFile === normalizedDir;
+}
+
+/**
+ * Validate that a file path is within a workspace root before writing.
+ * Throws LSPError if the path is outside the workspace.
+ *
+ * @param filePath - File path to validate
+ * @param workspaceRoot - Workspace root path
+ * @throws LSPError if path is outside workspace
+ */
+export function validatePathWithinWorkspace(filePath: string, workspaceRoot: string): void {
+  if (!isWithinDirectory(filePath, workspaceRoot)) {
+    throw new LSPError(
+      LSPErrorCode.FILE_NOT_READABLE,
+      `File path "${filePath}" is outside workspace "${workspaceRoot}"`,
+      'File modifications are only allowed within the workspace root.',
+      { file_path: filePath }
+    );
+  }
 }
