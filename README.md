@@ -986,7 +986,7 @@ This means diagnostics are available immediately after files are opened, without
 
 ## Version
 
-Current version: **1.1.0**
+Current version: **1.1.1**
 
 ## License
 

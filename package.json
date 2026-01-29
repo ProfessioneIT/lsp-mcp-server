@@ -1,12 +1,26 @@
 {
   "name": "lsp-mcp-server",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server bridging Claude Code to Language Server Protocol servers",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "lsp-mcp-server": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ProfessioneIT/lsp-mcp-server.git"
+  },
+  "author": "Ivan Iraci <ivan.iraci@professioneit.com>",
+  "bugs": {
+    "url": "https://github.com/ProfessioneIT/lsp-mcp-server/issues"
+  },
+  "homepage": "https://github.com/ProfessioneIT/lsp-mcp-server#readme",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
