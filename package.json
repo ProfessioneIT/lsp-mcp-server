@@ -1,6 +1,6 @@
 {
   "name": "lsp-mcp-server",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "MCP server bridging Claude Code to Language Server Protocol servers",
   "type": "module",
   "main": "dist/index.js",
