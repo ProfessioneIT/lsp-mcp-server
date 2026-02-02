@@ -31,7 +31,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 ## Features
 
 - **24 MCP Tools** for comprehensive code intelligence
-- **8 Languages Supported** out of the box:
+- **9 Languages Supported** out of the box:
   - TypeScript / JavaScript
   - Python
   - Rust
@@ -40,6 +40,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
   - Ruby
   - PHP
   - Elixir
+  - Kotlin
 - **Multi-root Workspace** - Proper monorepo support with per-workspace server instances
 - **Push-based Diagnostics** - Real-time error/warning caching from language servers
 - **Human-friendly Positions** - All line/column numbers are 1-indexed
@@ -84,6 +85,12 @@ npm install -g intelephense
 mix escript.install hex elixir_ls
 # Or download pre-built releases from:
 # https://github.com/elixir-lsp/elixir-ls/releases
+
+# Kotlin
+# macOS:
+brew install JetBrains/utils/kotlin-lsp
+# Or download from:
+# https://github.com/Kotlin/kotlin-lsp/releases
 ```
 
 ### Install lsp-mcp-server
@@ -702,6 +709,7 @@ The following languages are supported out of the box:
 | **Ruby** | solargraph | `solargraph stdio` | `.rb`, `.rake`, `.gemspec` | `Gemfile`, `.ruby-version`, `Rakefile` |
 | **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml` | `composer.json`, `index.php` |
 | **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex` | `mix.exs`, `.formatter.exs` |
+| **Kotlin** | kotlin-lsp | `kotlin-lsp` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
 
 You can add additional languages by providing a custom configuration (see [Configuration](#configuration)).
 
@@ -986,7 +994,7 @@ This means diagnostics are available immediately after files are opened, without
 
 ## Version
 
-Current version: **1.1.5**
+Current version: **1.1.8**
 
 ## License
 

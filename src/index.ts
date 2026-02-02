@@ -756,7 +756,7 @@ async function main() {
   const server = new Server(
     {
       name: 'lsp-mcp-server',
-      version: '1.1.3',
+      version: '1.1.8',
     },
     {
       capabilities: {
