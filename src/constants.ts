@@ -91,6 +91,14 @@ export const DEFAULT_SERVERS: LSPServerConfig[] = [
     args: [],
     rootPatterns: ['mix.exs', '.formatter.exs'],
   },
+  {
+    id: 'kotlin',
+    extensions: ['.kt', '.kts'],
+    languageIds: ['kotlin'],
+    command: 'kotlin-lsp',
+    args: [],
+    rootPatterns: ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'],
+  },
 ];
 
 // ============================================================================
@@ -118,6 +126,7 @@ export const INSTALL_COMMANDS: Record<string, string> = {
   ruby: 'gem install solargraph',
   php: 'npm install -g intelephense',
   elixir: 'mix escript.install hex elixir_ls  # or download from https://github.com/elixir-lsp/elixir-ls/releases',
+  kotlin: 'brew install JetBrains/utils/kotlin-lsp  # or download from https://github.com/Kotlin/kotlin-lsp/releases',
 };
 
 // ============================================================================
