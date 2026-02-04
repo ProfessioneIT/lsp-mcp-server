@@ -31,7 +31,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 ## Features
 
 - **24 MCP Tools** for comprehensive code intelligence
-- **9 Languages Supported** out of the box:
+- **10 Languages Supported** out of the box:
   - TypeScript / JavaScript
   - Python
   - Rust
@@ -41,6 +41,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
   - PHP
   - Elixir
   - Kotlin
+  - Java
 - **Multi-root Workspace** - Proper monorepo support with per-workspace server instances
 - **Push-based Diagnostics** - Real-time error/warning caching from language servers
 - **Human-friendly Positions** - All line/column numbers are 1-indexed
@@ -91,6 +92,12 @@ mix escript.install hex elixir_ls
 brew install JetBrains/utils/kotlin-lsp
 # Or download from:
 # https://github.com/Kotlin/kotlin-lsp/releases
+
+# Java
+# macOS:
+brew install jdtls
+# Or download from:
+# https://github.com/eclipse-jdtls/eclipse.jdt.ls
 ```
 
 ### Install lsp-mcp-server
@@ -710,6 +717,7 @@ The following languages are supported out of the box:
 | **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml` | `composer.json`, `index.php` |
 | **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex` | `mix.exs`, `.formatter.exs` |
 | **Kotlin** | kotlin-lsp | `kotlin-lsp` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
+| **Java** | jdtls | `jdtls` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `.classpath` |
 
 You can add additional languages by providing a custom configuration (see [Configuration](#configuration)).
 
@@ -994,7 +1002,7 @@ This means diagnostics are available immediately after files are opened, without
 
 ## Version
 
-Current version: **1.1.8**
+Current version: **1.1.11**
 
 ## License
 
