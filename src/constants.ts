@@ -99,6 +99,24 @@ export const DEFAULT_SERVERS: LSPServerConfig[] = [
     args: [],
     rootPatterns: ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'],
   },
+  {
+    id: 'java',
+    extensions: ['.java'],
+    languageIds: ['java'],
+    command: 'jdtls',
+    args: [],
+    env: {
+      JDTLS_JVM_ARGS: '-Xmx8G -XX:ActiveProcessorCount=1',
+    },
+    rootPatterns: ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', '.classpath'],
+    initializationOptions: {
+      settings: {
+        java: {
+          jdt: { ls: { vmargs: '-Xmx8G -XX:ActiveProcessorCount=1' } },
+        },
+      },
+    },
+  },
 ];
 
 // ============================================================================
@@ -127,6 +145,7 @@ export const INSTALL_COMMANDS: Record<string, string> = {
   php: 'npm install -g intelephense',
   elixir: 'mix escript.install hex elixir_ls  # or download from https://github.com/elixir-lsp/elixir-ls/releases',
   kotlin: 'brew install JetBrains/utils/kotlin-lsp  # or download from https://github.com/Kotlin/kotlin-lsp/releases',
+  java: 'Install jdtls from https://github.com/eclipse-jdtls/eclipse.jdt.ls  # or: brew install jdtls',
 };
 
 // ============================================================================
