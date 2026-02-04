@@ -9,12 +9,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 ```bash
-npm run build        # Compile TypeScript to dist/
-npm run dev          # Watch mode for development
-npm start            # Run the compiled server (node dist/index.js)
-npm test             # Run unit tests (vitest)
-npm run lint         # Run ESLint
-npm run typecheck    # Type-check without emitting
+npm run build          # Compile TypeScript to dist/
+npm run dev            # Watch mode for development
+npm start              # Run the compiled server (node dist/index.js)
+npm test               # Run unit tests (vitest)
+npm run test:watch     # Watch mode for tests
+npm run test:integration  # Run integration tests (separate vitest config)
+npm run lint           # Run ESLint
+npm run lint:fix       # Auto-fix ESLint issues
+npm run typecheck      # Type-check without emitting
+npm run clean          # Remove dist/
 ```
 
 ### Running a Single Test
@@ -22,7 +26,6 @@ npm run typecheck    # Type-check without emitting
 ```bash
 npm test -- tests/unit/position.test.ts           # Run specific test file
 npm test -- -t "converts 1-indexed"               # Run tests matching pattern
-npm run test:watch                                # Watch mode for development
 ```
 
 ### Interactive Testing with MCP Inspector
@@ -59,12 +62,14 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
 1. MCP request arrives at `src/index.ts` via `CallToolRequestSchema` handler
 2. Input validated with Zod schema from `src/schemas/tool-schemas.ts`
 3. Tool handler in `src/tools/` uses `getToolContext()` to access services
-4. `connectionManager.getClientForFile(filePath)` gets/creates LSP client:
-   - Detects language from file extension
-   - Finds workspace root via `findWorkspaceRootForLanguage()`
-   - Returns existing client or creates new one (with initialization lock)
-5. `documentManager.ensureOpen(uri, client)` opens file if needed
-6. Tool sends LSP request via client, converts response positions, returns JSON
+4. Most handlers call `prepareFile(filePath)` from `src/tools/utils.ts`, which:
+   - Validates the path and converts to URI
+   - Calls `connectionManager.getClientForFile(filePath)` to get/create an LSP client
+   - Calls `documentManager.ensureOpen(uri, client)` to open the file
+   - Returns `{ client, uri }` ready for LSP requests
+5. Tool sends LSP request via client, converts response positions, returns JSON
+
+**Note:** `src/index.ts` currently uses the deprecated `Server` class from MCP SDK. There is a TODO to migrate to the `McpServer` high-level API (`registerTool()` pattern).
 
 ### Adding a New Tool
 
