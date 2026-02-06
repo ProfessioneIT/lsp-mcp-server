@@ -206,7 +206,7 @@ export class ConnectionManagerImpl implements IConnectionManager {
 
     try {
       // Create and initialize client
-      const client = createLSPClient(serverConfig, this.config.requestTimeout);
+      const client = createLSPClient(serverConfig, serverConfig.requestTimeout ?? this.config.requestTimeout);
       await client.initialize(workspaceRoot);
 
       // Update instance

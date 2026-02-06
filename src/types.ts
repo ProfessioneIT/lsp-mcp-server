@@ -105,6 +105,9 @@ export interface LSPServerConfig {
 
   /** Patterns to identify project root (e.g., ["package.json", "tsconfig.json"]) */
   rootPatterns?: string[];
+
+  /** Per-server timeout for LSP requests (ms). Overrides global requestTimeout. */
+  requestTimeout?: number;
 }
 
 export interface Config {

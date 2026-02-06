@@ -109,6 +109,7 @@ export const DEFAULT_SERVERS: LSPServerConfig[] = [
       JDTLS_JVM_ARGS: '-Xmx8G -XX:ActiveProcessorCount=1',
     },
     rootPatterns: ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', '.classpath'],
+    requestTimeout: 300000, // 5 minutes — jdtls is slow on large projects
     initializationOptions: {
       settings: {
         java: {
