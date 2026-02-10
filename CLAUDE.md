@@ -57,6 +57,8 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
 
 5. **Global Tool Context**: Tool handlers access shared services (ConnectionManager, DocumentManager, DiagnosticsCache, Config) via the global `ToolContext` set in `src/tools/context.ts`. This is initialized in `src/index.ts` before server startup.
 
+6. **Interface/Implementation Separation**: `src/types.ts` defines interfaces (`LSPClient`, `ConnectionManager`, `DocumentManager`, `DiagnosticsCache`), while `src/services/` contains the concrete implementations (`LSPClientImpl`, `ConnectionManagerImpl`, `DocumentManagerImpl`, `DiagnosticsCacheImpl`). Tool handlers only depend on interfaces.
+
 ### Data Flow for a Typical Tool Call
 
 1. MCP request arrives at `src/index.ts` via `CallToolRequestSchema` handler
@@ -84,7 +86,16 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
 - Servers auto-start on first request when `autoStart: true` (default)
 - Crashed servers restart with exponential backoff (max 3 attempts in 5 minutes)
 - Idle servers stop after `idleTimeout` (default 30 minutes)
+- Per-server `requestTimeout` can override the global default (e.g., jdtls uses 5 minutes)
 - `ConnectionManager.shutdownAll()` called on SIGINT/SIGTERM
+
+## TypeScript & Module Conventions
+
+- **ESM-only**: The project uses `"type": "module"` with `NodeNext` module resolution. **All imports must use `.js` extensions** (e.g., `import { foo } from './bar.js'`), even when importing `.ts` files.
+- **Strict TypeScript**: `noUncheckedIndexedAccess` is enabled (indexed access returns `T | undefined`), `exactOptionalPropertyTypes` is enabled (must use `undefined` explicitly for optional properties, not just omit them).
+- **Unused variables**: Prefix with `_` (enforced by ESLint rule `argsIgnorePattern: "^_"`).
+- **Vitest globals**: Tests use `globals: true` — no need to import `describe`, `it`, `expect`.
+- **Unit tests** go in `tests/unit/`, integration tests have a separate `vitest.integration.config.ts`.
 
 ## Security
 
