@@ -86,7 +86,7 @@ Claude Code ──[MCP/stdio]──> lsp-mcp-server ──[LSP/stdio]──> Lan
 - Servers auto-start on first request when `autoStart: true` (default)
 - Crashed servers restart with exponential backoff (max 3 attempts in 5 minutes)
 - Idle servers stop after `idleTimeout` (default 30 minutes)
-- Per-server `requestTimeout` can override the global default (e.g., jdtls uses 5 minutes)
+- Per-server `requestTimeout` can override the global default
 - `ConnectionManager.shutdownAll()` called on SIGINT/SIGTERM
 
 ## TypeScript & Module Conventions

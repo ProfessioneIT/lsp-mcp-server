@@ -93,11 +93,10 @@ brew install JetBrains/utils/kotlin-lsp
 # Or download from:
 # https://github.com/Kotlin/kotlin-lsp/releases
 
-# Java
-# macOS:
-brew install jdtls
-# Or download from:
-# https://github.com/eclipse-jdtls/eclipse.jdt.ls
+# Java (requires Java 20+, Maven, npm, protobuf)
+git clone https://github.com/idelice/jls
+cd jls && ./scripts/build.sh
+# Add dist/ to PATH or symlink dist/lang_server_linux.sh as 'jls'
 ```
 
 ### Install lsp-mcp-server
@@ -717,7 +716,7 @@ The following languages are supported out of the box:
 | **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml` | `composer.json`, `index.php` |
 | **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex` | `mix.exs`, `.formatter.exs` |
 | **Kotlin** | kotlin-lsp | `kotlin-lsp` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
-| **Java** | jdtls | `jdtls` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `.classpath` |
+| **Java** | jls | `jls` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `BUILD`, `.classpath` |
 
 You can add additional languages by providing a custom configuration (see [Configuration](#configuration)).
 
