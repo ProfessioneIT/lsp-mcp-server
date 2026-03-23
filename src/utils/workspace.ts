@@ -129,6 +129,17 @@ export async function findWorkspaceRootForLanguage(
   filePath: string,
   rootPatterns?: string[]
 ): Promise<string> {
+  // Environment override takes priority — essential for monorepos where
+  // language-specific markers (e.g. tsconfig.json) exist at the package
+  // level and would prevent cross-package reference resolution.
+  const envRoot = process.env[ENV.WORKSPACE_ROOT];
+  if (envRoot) {
+    const resolved = normalizePath(envRoot);
+    if (await isDirectory(resolved)) {
+      return resolved;
+    }
+  }
+
   if (rootPatterns && rootPatterns.length > 0) {
     // First try language-specific patterns
     const normalizedPath = normalizePath(filePath);
