@@ -173,6 +173,7 @@ export class LSPClientImpl implements ILSPClient {
       this.process = spawn(this.config.command, this.config.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, ...this.config.env },
+        cwd: this._workspaceRoot,
         shell: false,
       });
     } catch (_error) {
