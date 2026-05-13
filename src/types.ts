@@ -46,6 +46,10 @@ import type {
   TypeHierarchyItem,
   TextEdit,
   FormattingOptions,
+  DocumentHighlight,
+  InlayHint,
+  SelectionRange,
+  FoldingRange,
 } from 'vscode-languageserver-protocol';
 
 // Re-export LSP types we use
@@ -75,6 +79,10 @@ export type {
   TypeHierarchyItem,
   TextEdit,
   FormattingOptions,
+  DocumentHighlight,
+  InlayHint,
+  SelectionRange,
+  FoldingRange,
 };
 
 // ============================================================================
@@ -170,6 +178,12 @@ export interface LSPClient {
 
   // Document Formatting
   formatDocument(uri: string, options: FormattingOptions): Promise<TextEdit[] | null>;
+
+  // Document Highlights, Inlay Hints, Selection Range, Folding Ranges
+  documentHighlight(uri: string, position: Position): Promise<DocumentHighlight[] | null>;
+  inlayHints(uri: string, range: Range): Promise<InlayHint[] | null>;
+  selectionRange(uri: string, positions: Position[]): Promise<SelectionRange[] | null>;
+  foldingRanges(uri: string): Promise<FoldingRange[] | null>;
 
   // Request management
   cancelRequest(id: number | string): void;
@@ -766,4 +780,104 @@ export interface FindSymbolResponse {
   };
   incoming_calls?: CallHierarchyIncomingCallResult[];
   outgoing_calls?: CallHierarchyOutgoingCallResult[];
+}
+
+// ============================================================================
+// Document Highlight Response Types
+// ============================================================================
+
+export interface DocumentHighlightResult {
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  /** 'text' (default), 'read', or 'write' — LSP DocumentHighlightKind */
+  kind: 'text' | 'read' | 'write';
+  /** Trimmed source line at the highlight, for quick scanning */
+  context: string;
+}
+
+export interface DocumentHighlightsResponse {
+  highlights: DocumentHighlightResult[];
+}
+
+// ============================================================================
+// Inlay Hints Response Types
+// ============================================================================
+
+export interface InlayHintResult {
+  line: number;
+  column: number;
+  /** The hint text (e.g. ": string", "name:") — combined when multipart */
+  label: string;
+  /** 'type' or 'parameter' (from LSP InlayHintKind), or undefined if unknown */
+  kind?: 'type' | 'parameter';
+  /** Optional tooltip / documentation associated with the hint */
+  tooltip?: string;
+  padding_left?: boolean;
+  padding_right?: boolean;
+}
+
+export interface InlayHintsResponse {
+  hints: InlayHintResult[];
+  /**
+   * The exact 1-indexed range that was queried.
+   * Re-stated for clarity since hints depend on it.
+   */
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+}
+
+// ============================================================================
+// Selection Range Response Types
+// ============================================================================
+
+export interface SelectionRangeNode {
+  range: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  /** The trimmed source on the range's first line — context for quick scanning */
+  context: string;
+  /** Parent range — null at the outermost level */
+  parent?: SelectionRangeNode;
+}
+
+export interface SelectionRangeResponse {
+  /** Innermost-to-outermost flat list, for easy iteration */
+  ranges: SelectionRangeNode[];
+}
+
+// ============================================================================
+// Folding Ranges Response Types
+// ============================================================================
+
+export interface FoldingRangeResult {
+  start_line: number;
+  end_line: number;
+  start_column?: number;
+  end_column?: number;
+  /** 'comment', 'imports', 'region', or undefined */
+  kind?: string;
+  collapsed_text?: string;
+}
+
+export interface FoldingRangesResponse {
+  ranges: FoldingRangeResult[];
+}
+
+// ============================================================================
+// Index Files Response Types
+// ============================================================================
+
+export interface IndexFilesResponse {
+  /** Files successfully opened (will now publish diagnostics) */
+  opened: string[];
+  /** Files that failed to open, with reason */
+  failed: Array<{ file: string; error: string }>;
+  /** Convenience counts */
+  opened_count: number;
+  failed_count: number;
 }

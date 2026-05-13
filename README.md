@@ -30,7 +30,7 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 
 ## Features
 
-- **24 MCP Tools** for comprehensive code intelligence
+- **29 MCP Tools** for comprehensive code intelligence
 - **10 Languages Supported** out of the box:
   - TypeScript / JavaScript
   - Python
@@ -224,27 +224,33 @@ These tools are still appropriate for:
 ```
 lsp_server_status          # Check what's running
 lsp_start_server           # Start a language server
+lsp_stop_server            # Stop a language server
 lsp_goto_definition        # Jump to where symbol is defined
 lsp_goto_type_definition   # Jump to type definition
 lsp_find_references        # Find all usages of a symbol
 lsp_find_implementations   # Find concrete implementations
 lsp_workspace_symbols      # Search symbols across project
 lsp_document_symbols       # Get outline of a file
+lsp_document_highlights    # Every occurrence in this file (read/write classified)
 lsp_hover                  # Get type/docs for symbol
 lsp_signature_help         # Get function parameter hints
+lsp_inlay_hints            # Inferred types + parameter names over a range
 lsp_completions            # Get code completions
 lsp_diagnostics            # Get errors/warnings for a file
-lsp_workspace_diagnostics  # Get errors/warnings across project
+lsp_workspace_diagnostics  # Get errors/warnings across opened files
+lsp_index_files            # Warm up: batch-open files for workspace diagnostics
 lsp_file_exports           # Get public API of a module
-lsp_file_imports           # Get imports/dependencies of a file
+lsp_file_imports           # Get imports/dependencies of a file (regex, JS/TS)
 lsp_related_files          # Find connected files (imports/imported by)
+lsp_folding_ranges         # Foldable regions (functions, blocks, imports)
+lsp_selection_range        # Semantic enclosing ranges (stmt/block/fn)
 lsp_rename                 # Rename symbol across codebase
 lsp_code_actions           # Get/apply quick fixes and refactorings
 lsp_call_hierarchy         # See callers and callees
 lsp_type_hierarchy         # See type inheritance
 lsp_format_document        # Format code
 lsp_smart_search           # Combined: definition + refs + hover
-lsp_find_symbol            # Find symbol by name with full context
+lsp_find_symbol            # Find symbol by name (optionally scoped to a file)
 ```
 ```
 
@@ -252,6 +258,51 @@ This ensures Claude Code will:
 - Always start the LSP server before analyzing code
 - Use semantic LSP tools instead of text-based search for code navigation
 - Fall back to Grep/Glob only for non-code searches (strings, config files, docs)
+
+### 5. Install the LLM Usage Skill (Recommended)
+
+This repository ships a [`SKILL.md`](./SKILL.md) — a self-contained, LLM-facing guide that teaches an assistant how to choose between the 29 `lsp_*` tools, what their gotchas are, and what canonical workflows look like. Installing it as a Claude Code skill lets the model load that guidance on demand instead of needing it pasted into every prompt.
+
+**Why install it in addition to the CLAUDE.md snippet above?**
+The CLAUDE.md snippet enforces *that* LSP tools are used. `SKILL.md` teaches *how* to use them well — decision tree, workflows, gotchas, output shapes, error codes. The two complement each other.
+
+#### Claude Code
+
+Install at the user level (available in every project):
+
+```bash
+mkdir -p ~/.claude/skills/lsp-mcp-server
+cp SKILL.md ~/.claude/skills/lsp-mcp-server/SKILL.md
+```
+
+Or at the project level (committed to a specific repo, available only inside it):
+
+```bash
+mkdir -p .claude/skills/lsp-mcp-server
+cp /path/to/lsp-mcp-server/SKILL.md .claude/skills/lsp-mcp-server/SKILL.md
+```
+
+Restart Claude Code (or start a new session). The skill is auto-discovered from its YAML frontmatter (`name: lsp-mcp-server`). Claude will invoke it via the `Skill` tool whenever code navigation, refactoring, or diagnostics are relevant.
+
+To verify, ask Claude Code:
+
+> "What skills do you have available for LSP?"
+
+You should see `lsp-mcp-server` listed.
+
+#### Other Claude / Anthropic SDK integrations
+
+`SKILL.md` is plain Markdown with YAML frontmatter, so it works anywhere you can ship a Markdown document:
+
+- **Anthropic API / Claude Agent SDK** — load it via the [Skills feature](https://docs.anthropic.com/) or include it in your system prompt.
+- **Custom agents** — copy the content into your agent's system prompt or knowledge base.
+- **Other LLM CLIs (Gemini CLI, Copilot CLI, etc.)** — drop it into whichever skill / instruction directory the client supports, or include it as reference context.
+
+The file is intentionally self-contained: no external links to follow, no other files to install. One Markdown document is the whole skill.
+
+#### Keeping it up to date
+
+If you upgrade `lsp-mcp-server` (new tools, new behaviors), re-copy `SKILL.md` from the new version. A future release may break with a stale skill if, for example, a tool signature changes — pinning the skill to the server version you run is the simplest way to stay aligned.
 
 ## Available Tools
 
@@ -1001,7 +1052,7 @@ This means diagnostics are available immediately after files are opened, without
 
 ## Version
 
-Current version: **1.1.11**
+See [`package.json`](./package.json) for the current version. The MCP server reports its version dynamically at startup, so it is always in sync with the package.
 
 ## License
 

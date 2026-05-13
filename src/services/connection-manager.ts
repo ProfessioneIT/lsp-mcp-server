@@ -26,6 +26,7 @@ import type {
   LSPServerConfig,
   ServerInstance,
   Config,
+  DiagnosticsCache,
 } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 import { LSPClientImpl, createLSPClient } from './lsp-client.js';
@@ -54,7 +55,10 @@ export class ConnectionManagerImpl implements IConnectionManager {
   private idleTimers = new Map<string, NodeJS.Timeout>();
   private initLocks = new Map<string, Promise<LSPClient>>();
 
-  constructor(private readonly config: Config = DEFAULT_CONFIG) {}
+  constructor(
+    private readonly config: Config = DEFAULT_CONFIG,
+    private readonly diagnosticsCache?: DiagnosticsCache,
+  ) {}
 
   /**
    * Get or create a client for a file path.
@@ -269,6 +273,15 @@ export class ConnectionManagerImpl implements IConnectionManager {
       }
       logger.error(`Server error: ${config.id}`, error);
     });
+
+    // Forward publishDiagnostics into the global cache so workspace-wide
+    // queries (lsp_workspace_diagnostics, lsp_related_files imported_by) see them.
+    if (this.diagnosticsCache) {
+      const cache = this.diagnosticsCache;
+      client.onDiagnostics((uri, diagnostics) => {
+        cache.update(uri, diagnostics);
+      });
+    }
   }
 
   private shouldRestart(key: string): boolean {
@@ -378,6 +391,9 @@ export class ConnectionManagerImpl implements IConnectionManager {
 /**
  * Create a connection manager instance.
  */
-export function createConnectionManager(config?: Config): IConnectionManager {
-  return new ConnectionManagerImpl(config);
+export function createConnectionManager(
+  config?: Config,
+  diagnosticsCache?: DiagnosticsCache,
+): IConnectionManager {
+  return new ConnectionManagerImpl(config, diagnosticsCache);
 }

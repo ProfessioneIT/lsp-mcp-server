@@ -34,6 +34,11 @@ export { handleCallHierarchy } from './call-hierarchy.js';
 export { handleTypeHierarchy } from './type-hierarchy.js';
 export { handleFormatDocument } from './formatting.js';
 export { handleSmartSearch, handleFindSymbol } from './smart-search.js';
+export { handleDocumentHighlights } from './document-highlights.js';
+export { handleInlayHints } from './inlay-hints.js';
+export { handleSelectionRange } from './selection-range.js';
+export { handleFoldingRanges } from './folding-ranges.js';
+export { handleIndexFiles } from './index-files.js';
 
 // Context
 export { setToolContext, getToolContext } from './context.js';

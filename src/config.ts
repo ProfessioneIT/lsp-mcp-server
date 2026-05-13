@@ -154,16 +154,17 @@ export async function loadConfig(): Promise<Config> {
     }
   }
 
-  // Environment variable overrides
-  if (process.env.LSP_MCP_LOG_LEVEL) {
-    const level = process.env.LSP_MCP_LOG_LEVEL;
-    if (['debug', 'info', 'warn', 'error'].includes(level)) {
-      config.logLevel = level as Config['logLevel'];
-    }
+  // Environment variable overrides.
+  // Standardised on the LSP_* prefix (matches README + ENV constants).
+  // The legacy LSP_MCP_* names are still honoured but should be considered deprecated.
+  const envLogLevel = process.env.LSP_LOG_LEVEL ?? process.env.LSP_MCP_LOG_LEVEL;
+  if (envLogLevel && ['debug', 'info', 'warn', 'error'].includes(envLogLevel)) {
+    config.logLevel = envLogLevel as Config['logLevel'];
   }
 
-  if (process.env.LSP_MCP_REQUEST_TIMEOUT) {
-    const timeout = parseInt(process.env.LSP_MCP_REQUEST_TIMEOUT, 10);
+  const envTimeout = process.env.LSP_REQUEST_TIMEOUT ?? process.env.LSP_MCP_REQUEST_TIMEOUT;
+  if (envTimeout) {
+    const timeout = parseInt(envTimeout, 10);
     if (!isNaN(timeout) && timeout > 0) {
       config.requestTimeout = timeout;
     }

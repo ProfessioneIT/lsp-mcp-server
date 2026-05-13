@@ -78,7 +78,7 @@ export async function handleTypeHierarchy(
     throw new LSPError(
       LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
       'No type hierarchy item found at this position',
-      'Move cursor to a class, interface, or type definition.',
+      'Move cursor onto a class, interface, or type identifier (not whitespace or a keyword). If you do not know the exact position, try lsp_smart_search with include=["implementations","definition"] — it locates the symbol from a hover-based position and tolerates missing capabilities.',
       { file_path, position: { line, column } }
     );
   }

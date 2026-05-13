@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import type { DocumentSymbol, SymbolInformation } from 'vscode-languageserver-protocol';
 import type { SmartSearchInput, FindSymbolInput } from '../schemas/tool-schemas.js';
 import type {
   SmartSearchResponse,
@@ -31,6 +32,47 @@ import { getToolContext } from './context.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath } from '../utils/uri.js';
 import { getSymbolKindName } from './utils.js';
+
+/**
+ * Recursively flatten a hierarchical DocumentSymbol tree into a flat list,
+ * preserving container_name for nested symbols.
+ */
+function flattenDocumentSymbols(
+  symbols: (DocumentSymbol | SymbolInformation)[],
+  containerName?: string,
+): Array<{ name: string; kind: number; line: number; column: number; container?: string }> {
+  const out: Array<{ name: string; kind: number; line: number; column: number; container?: string }> = [];
+  for (const s of symbols) {
+    if ('selectionRange' in s) {
+      // DocumentSymbol — hierarchical, has children
+      const doc = s as DocumentSymbol;
+      const entry: { name: string; kind: number; line: number; column: number; container?: string } = {
+        name: doc.name,
+        kind: doc.kind,
+        line: doc.selectionRange.start.line + 1,
+        column: doc.selectionRange.start.character + 1,
+      };
+      if (containerName) entry.container = containerName;
+      out.push(entry);
+      if (doc.children && doc.children.length > 0) {
+        const newContainer = containerName ? `${containerName}.${doc.name}` : doc.name;
+        out.push(...flattenDocumentSymbols(doc.children, newContainer));
+      }
+    } else {
+      // SymbolInformation — flat
+      const info = s as SymbolInformation;
+      const entry: { name: string; kind: number; line: number; column: number; container?: string } = {
+        name: info.name,
+        kind: info.kind,
+        line: info.location.range.start.line + 1,
+        column: info.location.range.start.character + 1,
+      };
+      if (info.containerName) entry.container = info.containerName;
+      out.push(entry);
+    }
+  }
+  return out;
+}
 
 /**
  * Handle lsp_smart_search tool call.
@@ -253,6 +295,108 @@ function getSymbolLocation(symbol: { location?: { uri: string; range?: { start?:
 export async function handleFindSymbol(
   input: FindSymbolInput
 ): Promise<FindSymbolResponse> {
+  const { name, file_path, kind, include, references_limit } = input;
+
+  // File-scoped path: resolve from this file's document symbols instead of
+  // the workspace index. This is faster and unambiguous when the caller
+  // already knows the file.
+  if (file_path) {
+    return findSymbolInFile({
+      name,
+      file_path,
+      ...(kind && { kind }),
+      include,
+      references_limit,
+    });
+  }
+
+  return findSymbolInWorkspace({
+    name,
+    ...(kind && { kind }),
+    include,
+    references_limit,
+  });
+}
+
+async function findSymbolInFile(input: {
+  name: string;
+  file_path: string;
+  kind?: string;
+  include: FindSymbolInput['include'];
+  references_limit: number;
+}): Promise<FindSymbolResponse> {
+  const { name, file_path, kind, include, references_limit } = input;
+
+  const { client, uri } = await prepareFile(file_path);
+  const docSymbols = await client.documentSymbols(uri);
+
+  if (!docSymbols || docSymbols.length === 0) {
+    return { query: name, matches_found: 0, symbol_name: name };
+  }
+
+  const flat = flattenDocumentSymbols(docSymbols);
+
+  const lower = name.toLowerCase();
+  let candidates = flat.filter((s) => s.name.toLowerCase().includes(lower));
+
+  if (kind) {
+    const byKind = candidates.filter((s) => getSymbolKindName(s.kind) === kind);
+    if (byKind.length > 0) candidates = byKind;
+  }
+
+  if (candidates.length === 0) {
+    return { query: name, matches_found: 0, symbol_name: name };
+  }
+
+  candidates.sort((a, b) => {
+    const aExact = a.name === name ? 0 : 1;
+    const bExact = b.name === name ? 0 : 1;
+    if (aExact !== bExact) return aExact - bExact;
+    return a.name.length - b.name.length;
+  });
+
+  const best = candidates[0]!;
+  const result: FindSymbolResponse = {
+    query: name,
+    matches_found: candidates.length,
+    match: {
+      name: best.name,
+      kind: getSymbolKindName(best.kind),
+      path: file_path,
+      line: best.line,
+      column: best.column,
+      container_name: best.container,
+    },
+    symbol_name: best.name,
+  };
+
+  try {
+    const smartResult = await handleSmartSearch({
+      file_path,
+      line: best.line,
+      column: best.column,
+      include,
+      references_limit,
+    });
+    if (smartResult.definition) result.definition = smartResult.definition;
+    if (smartResult.references) result.references = smartResult.references;
+    if (smartResult.hover) result.hover = smartResult.hover;
+    if (smartResult.implementations) result.implementations = smartResult.implementations;
+    if (smartResult.incoming_calls) result.incoming_calls = smartResult.incoming_calls;
+    if (smartResult.outgoing_calls) result.outgoing_calls = smartResult.outgoing_calls;
+  } catch {
+    // If smart search fails, we still have the basic match info
+  }
+
+  return result;
+}
+
+async function findSymbolInWorkspace(input: {
+  name: string;
+  kind?: string;
+  include: FindSymbolInput['include'];
+  references_limit: number;
+}): Promise<FindSymbolResponse> {
   const { name, kind, include, references_limit } = input;
   const ctx = getToolContext();
 

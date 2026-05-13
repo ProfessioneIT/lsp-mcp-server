@@ -119,13 +119,20 @@ export async function handleWorkspaceSymbols(
     };
   }
 
-  // Query all active servers in parallel
+  // Query all active servers in parallel. Cap each server's response at a
+  // short fixed timeout so one slow/buggy server cannot hold up the call —
+  // the global request timeout is too generous for a "search all servers" UX.
+  const PER_SERVER_TIMEOUT_MS = 5000;
   const allResults = await Promise.all(
     servers
       .filter(server => server.client && server.status === 'running')
       .map(async (server) => {
         try {
-          return await server.client!.workspaceSymbols(query);
+          const queryPromise = server.client!.workspaceSymbols(query);
+          const timeoutPromise = new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), PER_SERVER_TIMEOUT_MS),
+          );
+          return await Promise.race([queryPromise, timeoutPromise]);
         } catch {
           // Ignore errors from individual servers
           return null;

@@ -51,6 +51,10 @@ import {
   TypeHierarchyPrepareRequest,
   TypeHierarchySupertypesRequest,
   TypeHierarchySubtypesRequest,
+  DocumentHighlightRequest,
+  InlayHintRequest,
+  SelectionRangeRequest,
+  FoldingRangeRequest,
   type TextDocumentPositionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
@@ -87,6 +91,13 @@ import {
   type TypeHierarchyItem,
   type TextEdit,
   type FormattingOptions,
+  type DocumentHighlight,
+  type InlayHint,
+  type InlayHintParams,
+  type SelectionRange,
+  type SelectionRangeParams,
+  type FoldingRange,
+  type FoldingRangeParams,
 } from 'vscode-languageserver-protocol';
 
 import type { LSPClient as ILSPClient, LSPServerConfig } from '../types.js';
@@ -294,6 +305,20 @@ export class LSPClientImpl implements ILSPClient {
           },
           formatting: {
             dynamicRegistration: false,
+          },
+          documentHighlight: {
+            dynamicRegistration: false,
+          },
+          inlayHint: {
+            dynamicRegistration: false,
+          },
+          selectionRange: {
+            dynamicRegistration: false,
+          },
+          foldingRange: {
+            dynamicRegistration: false,
+            rangeLimit: 5000,
+            lineFoldingOnly: false,
           },
         },
         workspace: {
@@ -639,6 +664,51 @@ export class LSPClientImpl implements ILSPClient {
       options,
     };
     return this.sendRequest(DocumentFormattingRequest.type, params);
+  }
+
+  // ============================================================================
+  // Document Highlights / Inlay Hints / Selection Range / Folding Ranges
+  // ============================================================================
+
+  async documentHighlight(
+    uri: string,
+    position: Position,
+  ): Promise<DocumentHighlight[] | null> {
+    this.ensureCapability('documentHighlightProvider', 'documentHighlight');
+    const params: TextDocumentPositionParams = {
+      textDocument: { uri },
+      position,
+    };
+    return this.sendRequest(DocumentHighlightRequest.type, params);
+  }
+
+  async inlayHints(uri: string, range: Range): Promise<InlayHint[] | null> {
+    this.ensureCapability('inlayHintProvider', 'inlayHint');
+    const params: InlayHintParams = {
+      textDocument: { uri },
+      range,
+    };
+    return this.sendRequest(InlayHintRequest.type, params);
+  }
+
+  async selectionRange(
+    uri: string,
+    positions: Position[],
+  ): Promise<SelectionRange[] | null> {
+    this.ensureCapability('selectionRangeProvider', 'selectionRange');
+    const params: SelectionRangeParams = {
+      textDocument: { uri },
+      positions,
+    };
+    return this.sendRequest(SelectionRangeRequest.type, params);
+  }
+
+  async foldingRanges(uri: string): Promise<FoldingRange[] | null> {
+    this.ensureCapability('foldingRangeProvider', 'foldingRange');
+    const params: FoldingRangeParams = {
+      textDocument: { uri },
+    };
+    return this.sendRequest(FoldingRangeRequest.type, params);
   }
 
   // ============================================================================

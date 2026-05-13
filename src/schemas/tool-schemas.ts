@@ -316,6 +316,11 @@ export const FindSymbolSchema = z.object({
   name: z.string()
     .min(1)
     .describe('Symbol name to search for (supports fuzzy matching)'),
+  file_path: FilePathSchema
+    .optional()
+    .describe(
+      'Optional: scope the search to this file. When provided, the symbol is resolved from this file\'s document symbols (faster and unambiguous when you know the file). When omitted, searches the entire workspace.',
+    ),
   kind: z.enum([
     'File', 'Module', 'Namespace', 'Package', 'Class', 'Method', 'Property',
     'Field', 'Constructor', 'Enum', 'Interface', 'Function', 'Variable',
@@ -403,3 +408,63 @@ export const RelatedFilesSchema = z.object({
 }).strict();
 
 export type RelatedFilesInput = z.infer<typeof RelatedFilesSchema>;
+
+// ============================================================================
+// Document Highlights / Inlay Hints / Selection Range / Folding Ranges
+// ============================================================================
+
+export const DocumentHighlightsSchema = z.object({
+  file_path: FilePathSchema,
+  line: LineSchema,
+  column: ColumnSchema,
+}).strict();
+
+export type DocumentHighlightsInput = z.infer<typeof DocumentHighlightsSchema>;
+
+export const InlayHintsSchema = z.object({
+  file_path: FilePathSchema,
+  start_line: LineSchema.describe('Start line of the range to query (1-indexed)'),
+  start_column: ColumnSchema.describe('Start column of the range to query (1-indexed)'),
+  end_line: LineSchema.describe('End line of the range to query (1-indexed)'),
+  end_column: ColumnSchema.describe('End column of the range to query (1-indexed)'),
+  limit: z.number()
+    .int()
+    .min(1)
+    .max(500)
+    .default(100)
+    .describe('Maximum number of hints to return'),
+}).strict();
+
+export type InlayHintsInput = z.infer<typeof InlayHintsSchema>;
+
+export const SelectionRangeSchema = z.object({
+  file_path: FilePathSchema,
+  line: LineSchema,
+  column: ColumnSchema,
+}).strict();
+
+export type SelectionRangeInput = z.infer<typeof SelectionRangeSchema>;
+
+export const FoldingRangesSchema = z.object({
+  file_path: FilePathSchema,
+  kind_filter: z.enum(['all', 'comment', 'imports', 'region'])
+    .default('all')
+    .describe('Filter results to one kind (LSP foldingRange kinds)'),
+}).strict();
+
+export type FoldingRangesInput = z.infer<typeof FoldingRangesSchema>;
+
+// ============================================================================
+// Index Files (warm-up)
+// ============================================================================
+
+export const IndexFilesSchema = z.object({
+  files: z.array(FilePathSchema)
+    .min(1)
+    .max(200)
+    .describe(
+      'List of absolute file paths to open. Once opened, the LSP server begins publishing diagnostics for these files, making them visible to lsp_workspace_diagnostics. Use before a project-wide diagnostic scan or before lsp_related_files imported_by, which only sees opened files.',
+    ),
+}).strict();
+
+export type IndexFilesInput = z.infer<typeof IndexFilesSchema>;

@@ -109,7 +109,7 @@ export async function handleCallHierarchy(
     throw new LSPError(
       LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
       'No call hierarchy item found at this position',
-      'Move cursor to a function, method, or callable symbol.',
+      'Move cursor onto a function or method identifier (not whitespace or a keyword). If you do not know the exact position, try lsp_smart_search with include=["incoming_calls","outgoing_calls"] — it locates the symbol from a hover-based position and tolerates missing capabilities.',
       { file_path, position: { line, column } }
     );
   }

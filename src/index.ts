@@ -57,6 +57,11 @@ import {
   FileExportsSchema,
   FileImportsSchema,
   RelatedFilesSchema,
+  DocumentHighlightsSchema,
+  InlayHintsSchema,
+  SelectionRangeSchema,
+  FoldingRangesSchema,
+  IndexFilesSchema,
 } from './schemas/tool-schemas.js';
 
 import {
@@ -84,6 +89,11 @@ import {
   handleFormatDocument,
   handleSmartSearch,
   handleFindSymbol,
+  handleDocumentHighlights,
+  handleInlayHints,
+  handleSelectionRange,
+  handleFoldingRanges,
+  handleIndexFiles,
   setToolContext,
 } from './tools/index.js';
 
@@ -94,6 +104,10 @@ import { loadConfig } from './config.js';
 import { log, setLogLevel } from './utils/logger.js';
 import type { LSPError } from './types.js';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { createRequire } from 'node:module';
+
+// Read version from package.json at runtime so it never drifts.
+const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
 
 // ============================================================================
 // Tool Definitions
@@ -621,6 +635,110 @@ const TOOLS = [
       openWorldHint: false,
     },
   },
+  {
+    name: 'lsp_document_highlights',
+    description: 'Find all occurrences of the symbol at a position within the same file, classified as text/read/write. Faster and more local than lsp_find_references when you only care about one file (e.g., quick local rename preview or read-vs-write analysis).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        line: { type: 'number', description: 'Line number (1-indexed)' },
+        column: { type: 'number', description: 'Column number (1-indexed)' },
+      },
+      required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Document Highlights',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_inlay_hints',
+    description: 'Get inferred type annotations and parameter-name hints for a range of code. Reveals variable types, return types, and named-parameter mappings without one hover per identifier. Ideal for understanding heavily inferred code (TypeScript const/let, Rust let, etc.) at scale.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        start_line: { type: 'number', description: 'Start line (1-indexed)' },
+        start_column: { type: 'number', description: 'Start column (1-indexed)' },
+        end_line: { type: 'number', description: 'End line (1-indexed)' },
+        end_column: { type: 'number', description: 'End column (1-indexed)' },
+        limit: { type: 'number', description: 'Maximum hints to return', default: 100 },
+      },
+      required: ['file_path', 'start_line', 'start_column', 'end_line', 'end_column'],
+    },
+    annotations: {
+      title: 'Inlay Hints',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_selection_range',
+    description: 'Get the chain of semantic ranges enclosing a position — the expression, then its statement, then its block, up to the file. Use to pick the right range for lsp_code_actions (e.g., "extract this expression vs the whole statement").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        line: { type: 'number', description: 'Line number (1-indexed)' },
+        column: { type: 'number', description: 'Column number (1-indexed)' },
+      },
+      required: ['file_path', 'line', 'column'],
+    },
+    annotations: {
+      title: 'Selection Range',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_folding_ranges',
+    description: 'Get the foldable regions of a file (functions, classes, blocks, imports, comments). Use as a quick structural overview before reading specific sections.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute path to the source file' },
+        kind_filter: {
+          type: 'string',
+          enum: ['all', 'comment', 'imports', 'region'],
+          description: 'Filter results to one kind of fold',
+          default: 'all',
+        },
+      },
+      required: ['file_path'],
+    },
+    annotations: {
+      title: 'Folding Ranges',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'lsp_index_files',
+    description: 'Open a batch of files so language servers begin publishing diagnostics for them. Required warm-up before lsp_workspace_diagnostics (which only sees opened files) and before lsp_related_files imported_by. Use a small targeted set rather than the whole workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of absolute file paths to open',
+        },
+      },
+      required: ['files'],
+    },
+    annotations: {
+      title: 'Index Files',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
 ];
 
 // ============================================================================
@@ -726,6 +844,26 @@ const toolHandlers: Record<string, { schema: unknown; handler: ToolHandler }> = 
     schema: FindSymbolSchema,
     handler: async (input) => handleFindSymbol(FindSymbolSchema.parse(input)),
   },
+  lsp_document_highlights: {
+    schema: DocumentHighlightsSchema,
+    handler: async (input) => handleDocumentHighlights(DocumentHighlightsSchema.parse(input)),
+  },
+  lsp_inlay_hints: {
+    schema: InlayHintsSchema,
+    handler: async (input) => handleInlayHints(InlayHintsSchema.parse(input)),
+  },
+  lsp_selection_range: {
+    schema: SelectionRangeSchema,
+    handler: async (input) => handleSelectionRange(SelectionRangeSchema.parse(input)),
+  },
+  lsp_folding_ranges: {
+    schema: FoldingRangesSchema,
+    handler: async (input) => handleFoldingRanges(FoldingRangesSchema.parse(input)),
+  },
+  lsp_index_files: {
+    schema: IndexFilesSchema,
+    handler: async (input) => handleIndexFiles(IndexFilesSchema.parse(input)),
+  },
 };
 
 // ============================================================================
@@ -739,10 +877,12 @@ async function main() {
 
   log('info', 'Starting LSP-MCP server...');
 
-  // Create managers
-  const connectionManager = createConnectionManager(config);
-  const documentManager = createDocumentManager();
+  // Create managers. The diagnostics cache must exist before the connection
+  // manager so the manager can wire each LSP client's publishDiagnostics
+  // notifications into it.
   const diagnosticsCache = createDiagnosticsCache();
+  const connectionManager = createConnectionManager(config, diagnosticsCache);
+  const documentManager = createDocumentManager();
 
   // Set tool context
   setToolContext({
@@ -756,7 +896,7 @@ async function main() {
   const server = new Server(
     {
       name: 'lsp-mcp-server',
-      version: '1.1.8',
+      version: pkg.version,
     },
     {
       capabilities: {
