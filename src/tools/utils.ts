@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import type { Location, LocationLink } from 'vscode-languageserver-protocol';
+import type { Location, LocationLink, MarkupContent } from 'vscode-languageserver-protocol';
 import type { LocationResult, LSPClient } from '../types.js';
 import { uriToPath, readFile, pathToUri, ensureAbsolute } from '../utils/uri.js';
 import { fromLspRange, getLineContent, toLspPosition } from '../utils/position.js';
@@ -194,6 +194,15 @@ export function getCompletionKindName(kind: number | undefined): string {
  */
 export function getDiagnosticSeverityName(severity: number | undefined): 'error' | 'warning' | 'info' | 'hint' {
   return severity ? (DIAGNOSTIC_SEVERITY_NAMES[severity] ?? 'hint') : 'hint';
+}
+
+/**
+ * Normalize a diagnostic message to a plain string.
+ * As of LSP types 3.18, `Diagnostic.message` may be a `MarkupContent` object
+ * rather than a plain string; in that case we use its `value`.
+ */
+export function getDiagnosticMessageText(message: string | MarkupContent): string {
+  return typeof message === 'string' ? message : message.value;
 }
 
 /**

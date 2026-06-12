@@ -105,8 +105,8 @@ import { LSPError, LSPErrorCode } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { pathToUri } from '../utils/uri.js';
 
-// We'll use dynamic imports for vscode-jsonrpc since it has module resolution issues
-// This will be resolved when npm install is run
+// Minimal structural type for the JSON-RPC connection, kept local so vscode-jsonrpc
+// types do not leak across the codebase.
 type MessageConnection = {
   listen(): void;
   dispose(): void;
@@ -116,13 +116,21 @@ type MessageConnection = {
   onNotification(handler: (method: string, params: unknown) => void): void;
 };
 
-// Import jsonrpc types and functions
+// IMPORTANT: import the JSON-RPC connection primitives from vscode-languageserver-protocol,
+// NOT directly from vscode-jsonrpc. They must originate from the SAME vscode-jsonrpc instance
+// that defines the request types (InitializeRequest, etc.). vscode-jsonrpc identifies a
+// request's parameter structure via singleton objects (ParameterStructures.byName) compared by
+// reference. If the connection and the request types come from two different vscode-jsonrpc
+// copies (which npm installs when version ranges diverge), those singletons differ by identity
+// and `initialize` fails with "Unknown parameter structure byName". Sourcing both from the
+// protocol package guarantees a single instance. (We deliberately do NOT declare a direct
+// vscode-jsonrpc dependency in package.json for the same reason.)
 import {
   createMessageConnection,
   StreamMessageReader,
   StreamMessageWriter,
   CancellationTokenSource,
-} from 'vscode-jsonrpc/node.js';
+} from 'vscode-languageserver-protocol/node';
 
 type DiagnosticsHandler = (uri: string, diagnostics: Diagnostic[]) => void;
 type ErrorHandler = (error: Error) => void;

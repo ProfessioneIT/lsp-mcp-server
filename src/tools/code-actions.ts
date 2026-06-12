@@ -20,11 +20,11 @@
  * SOFTWARE.
  */
 
-import type { CodeAction, Command, WorkspaceEdit, TextEdit } from 'vscode-languageserver-protocol';
+import type { CodeAction, Command, WorkspaceEdit, TextEdit, MarkupContent } from 'vscode-languageserver-protocol';
 import type { CodeActionsInput } from '../schemas/tool-schemas.js';
 import type { CodeActionsResponse, CodeActionResult, DiagnosticResult } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
-import { prepareFile, toPosition, getDiagnosticSeverityName } from './utils.js';
+import { prepareFile, toPosition, getDiagnosticSeverityName, getDiagnosticMessageText } from './utils.js';
 import { fromLspRange } from '../utils/position.js';
 import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
 import * as fs from 'fs/promises';
@@ -75,7 +75,7 @@ function convertWorkspaceEdit(
 /**
  * Convert LSP diagnostic to our format.
  */
-function convertDiagnostic(diag: { range: { start: { line: number; character: number }; end: { line: number; character: number } }; severity?: number; code?: string | number; source?: string; message: string }, content: string): DiagnosticResult {
+function convertDiagnostic(diag: { range: { start: { line: number; character: number }; end: { line: number; character: number } }; severity?: number; code?: string | number; source?: string; message: string | MarkupContent }, content: string): DiagnosticResult {
   const range = fromLspRange(diag.range, content);
   const lines = content.split('\n');
   const contextLine = lines[diag.range.start.line] ?? '';
@@ -83,7 +83,7 @@ function convertDiagnostic(diag: { range: { start: { line: number; character: nu
   const result: DiagnosticResult = {
     range,
     severity: getDiagnosticSeverityName(diag.severity),
-    message: diag.message,
+    message: getDiagnosticMessageText(diag.message),
     context: contextLine.trim(),
   };
 

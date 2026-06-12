@@ -22,7 +22,7 @@
 
 import type { DiagnosticsInput, WorkspaceDiagnosticsInput } from '../schemas/tool-schemas.js';
 import type { DiagnosticsResponse, DiagnosticResult, WorkspaceDiagnosticsResponse, WorkspaceDiagnosticItem } from '../types.js';
-import { prepareFile, getDiagnosticSeverityName } from './utils.js';
+import { prepareFile, getDiagnosticSeverityName, getDiagnosticMessageText } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile } from '../utils/uri.js';
 import { getToolContext } from './context.js';
@@ -75,7 +75,7 @@ export async function handleDiagnostics(
     const result: DiagnosticResult = {
       range: { start, end },
       severity,
-      message: diag.message,
+      message: getDiagnosticMessageText(diag.message),
       context: contextLine.trim(),
     };
 
@@ -153,7 +153,7 @@ export async function handleWorkspaceDiagnostics(
         end_line: end.line,
         end_column: end.column,
         severity,
-        message: diag.message,
+        message: getDiagnosticMessageText(diag.message),
         context: contextLine.trim(),
       };
 

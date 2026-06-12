@@ -36,8 +36,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "vscode-jsonrpc": "8.2.0",
-    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-protocol": "^3.18.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
