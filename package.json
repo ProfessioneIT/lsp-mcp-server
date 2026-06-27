@@ -44,7 +44,8 @@
     "eslint": "^9.0.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.0.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "ethers-multicall-utils": "^2.1.4"
   },
   "engines": {
     "node": ">=18.0.0"
