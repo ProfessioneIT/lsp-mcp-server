@@ -547,10 +547,16 @@ export class LSPClientImpl implements ILSPClient {
     uri: string,
     position: Position
   ): Promise<Range | { range: Range; placeholder: string } | null> {
-    // prepareRename is optional - check if supported
-    if (!this._capabilities.renameProvider ||
-        (typeof this._capabilities.renameProvider === 'object' &&
-         !this._capabilities.renameProvider.prepareProvider)) {
+    // prepareRename is optional. Per LSP spec, renameProvider === true means
+    // rename is supported WITHOUT prepareRename. Only send prepareRename when the
+    // server advertises an object with prepareProvider; otherwise the server may
+    // answer MethodNotFound (-32601) and abort the rename (e.g. pylsp/rope).
+    const renameProvider = this._capabilities.renameProvider;
+    if (
+      typeof renameProvider !== 'object' ||
+      renameProvider === null ||
+      !renameProvider.prepareProvider
+    ) {
       // Not supported, return null to indicate rename should proceed without prepare
       return null;
     }

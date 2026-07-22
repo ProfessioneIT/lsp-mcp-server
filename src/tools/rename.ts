@@ -26,7 +26,6 @@ import type { RenameResponse, RenameEdit } from '../types.js';
 import { prepareFile, toPosition } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
-import { LSPError, LSPErrorCode } from '../types.js';
 import * as fs from 'fs/promises';
 
 /**
@@ -119,21 +118,19 @@ export async function handleRename(
   // Convert position
   const position = toPosition(line, column, content);
 
-  // First, check if rename is valid at this position
-  const prepareResult = await client.prepareRename(uri, position);
-
-  if (!prepareResult) {
-    throw new LSPError(
-      LSPErrorCode.RENAME_NOT_ALLOWED,
-      'Rename is not allowed at this position',
-      'Move cursor to a renameable symbol (variable, function, class, etc.)',
-      { file_path, position: { line, column } }
-    );
+  // prepareRename is best-effort: a null result means "proceed without prepare"
+  // (e.g. servers advertising renameProvider === true), and a thrown error must
+  // not abort the authoritative rename. Only use the placeholder when present.
+  let prepareResult: Awaited<ReturnType<typeof client.prepareRename>> = null;
+  try {
+    prepareResult = await client.prepareRename(uri, position);
+  } catch {
+    prepareResult = null;
   }
 
   // Extract original name if available
   let originalName: string | undefined;
-  if ('placeholder' in prepareResult) {
+  if (prepareResult && typeof prepareResult === 'object' && 'placeholder' in prepareResult) {
     originalName = prepareResult.placeholder;
   }
 
