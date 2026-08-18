@@ -25,6 +25,7 @@ import * as path from 'path';
 import * as os from 'os';
 import type { Config, LSPServerConfig } from './types.js';
 import { DEFAULT_CONFIG, DEFAULT_SERVERS } from './constants.js';
+import { isWorkspaceConfigurationMap } from './config/workspace-settings.js';
 
 // ============================================================================
 // Configuration Loading
@@ -100,7 +101,9 @@ function validateServerConfig(server: unknown): server is LSPServerConfig {
     s.languageIds.every((l) => typeof l === 'string') &&
     typeof s.command === 'string' &&
     Array.isArray(s.args) &&
-    s.args.every((a) => typeof a === 'string')
+    s.args.every((a) => typeof a === 'string') &&
+    (s.workspaceConfigurations === undefined ||
+      isWorkspaceConfigurationMap(s.workspaceConfigurations))
   );
 }
 
