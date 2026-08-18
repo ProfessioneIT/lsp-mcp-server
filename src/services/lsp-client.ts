@@ -104,17 +104,23 @@ import type { LSPClient as ILSPClient, LSPServerConfig } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { pathToUri } from '../utils/uri.js';
+import { getWorkspaceSettings } from '../config/workspace-settings.js';
+import {
+  WorkspaceConfigurationBridge,
+  type WorkspaceConfigurationConnection,
+} from './workspace-configuration.js';
 
-// Minimal structural type for the JSON-RPC connection, kept local so vscode-jsonrpc
-// types do not leak across the codebase.
-type MessageConnection = {
+// Minimal structural type for the JSON-RPC connection, kept local so the
+// heterogeneous request wrapper does not expose vscode-jsonrpc generics across
+// the codebase.
+interface MessageConnection extends WorkspaceConfigurationConnection {
   listen(): void;
   dispose(): void;
   sendRequest(type: unknown, params: unknown, token?: unknown): Promise<unknown>;
   sendNotification(type: unknown, params?: unknown): void;
   onNotification(type: unknown, handler: (params: unknown) => void): void;
   onNotification(handler: (method: string, params: unknown) => void): void;
-};
+}
 
 // IMPORTANT: import the JSON-RPC connection primitives from vscode-languageserver-protocol,
 // NOT directly from vscode-jsonrpc. They must originate from the SAME vscode-jsonrpc instance
@@ -215,6 +221,15 @@ export class LSPClientImpl implements ILSPClient {
     const reader = new StreamMessageReader(this.process.stdout);
     const writer = new StreamMessageWriter(this.process.stdin);
     this.connection = createMessageConnection(reader, writer) as MessageConnection;
+
+    const workspaceSettings = getWorkspaceSettings(
+      this.config.workspaceConfigurations,
+      rootUri,
+    );
+    const workspaceConfigurationBridge = workspaceSettings
+      ? new WorkspaceConfigurationBridge(rootUri, workspaceSettings)
+      : undefined;
+    workspaceConfigurationBridge?.register(this.connection);
 
     // Handle process events
     this.process.on('error', (error) => {
@@ -331,6 +346,11 @@ export class LSPClientImpl implements ILSPClient {
         },
         workspace: {
           workspaceFolders: true,
+          ...(workspaceConfigurationBridge
+            ? {
+                configuration: true,
+              }
+            : {}),
           symbol: {
             dynamicRegistration: false,
           },

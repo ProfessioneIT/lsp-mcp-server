@@ -803,7 +803,14 @@ Or set `LSP_CONFIG_PATH` environment variable to specify a custom path.
       "languageIds": ["python"],
       "command": "pylsp",
       "args": [],
-      "rootPatterns": ["pyproject.toml", "setup.py", "requirements.txt"]
+      "rootPatterns": ["pyproject.toml", "setup.py", "requirements.txt"],
+      "workspaceConfigurations": {
+        "/absolute/path/to/project": {
+          "python": {
+            "pythonPath": "/absolute/path/to/project-runtime/bin/python"
+          }
+        }
+      }
     }
   ],
   "requestTimeout": 30000,
@@ -836,7 +843,37 @@ Each server in the `servers` array has:
 | `args` | string[] | Yes | Command arguments |
 | `env` | object | No | Environment variables |
 | `initializationOptions` | object | No | LSP initialization options |
+| `workspaceConfigurations` | object | No | LSP settings keyed by exact, absolute workspace root |
 | `rootPatterns` | string[] | No | Files/dirs that indicate project root |
+
+`workspaceConfigurations` enables the standard LSP pull model. When a server
+is started for an exact configured root, the client advertises
+`workspace.configuration` and answers `workspace/configuration` requests.
+Scoped requests for files outside that root return `null`. Literal setting keys
+take precedence over dotted traversal, so both `"language.analysis"` and
+nested `"language": { "analysis": ... }` layouts are supported.
+
+Root keys must be absolute and must not resolve to the same canonical path.
+They may be provisioned after configuration is loaded; a missing or stale root
+therefore does not invalidate the language-server definition. Until an exact
+normalized root matches, the client starts without advertising configuration
+support for that process. If separately configured roots later converge on one
+canonical path, the match is treated as ambiguous and no settings are exposed.
+Scoped configuration accepts only undecorated local `file:` URIs and resolves
+symlink ancestors before checking containment, including when the leaf does not
+yet exist.
+
+The repository also provides an environment-driven acceptance suite for
+verifying two exact roots against a real language server:
+
+```bash
+npm run test:acceptance
+```
+
+Set `BASEDPYRIGHT_COMMAND`, `PYTHON_WITH_PYDANTIC`,
+`PYTHON_WITHOUT_PYDANTIC`, and `LSP_ACCEPTANCE_ROOT` to enable the current
+BasedPyright scenario. Without those variables, the external-runtime test is
+reported as skipped.
 
 ### Environment Variables
 

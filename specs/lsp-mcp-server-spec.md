@@ -175,6 +175,9 @@ interface LSPServerConfig {
   // Initialization options to pass to the server
   initializationOptions?: Record<string, unknown>;
 
+  // LSP settings keyed by exact, absolute workspace root
+  workspaceConfigurations?: Record<string, Record<string, unknown>>;
+
   // Patterns to identify project root (e.g., ["package.json", "tsconfig.json"])
   rootPatterns?: string[];
 }
