@@ -102,6 +102,7 @@ import { createDocumentManager } from './services/document-manager.js';
 import { createDiagnosticsCache } from './services/diagnostics-cache.js';
 import { loadConfig } from './config.js';
 import { log, setLogLevel } from './utils/logger.js';
+import { serializeToolResult } from './utils/json.js';
 import type { LSPError } from './types.js';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { createRequire } from 'node:module';
@@ -949,13 +950,13 @@ async function main() {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
+            text: serializeToolResult({
               error: {
                 code: 'UNKNOWN_TOOL',
                 message: `Unknown tool: ${name}`,
                 suggestion: 'Use lsp_server_status to see available tools and servers.',
               },
-            }),
+            }, config.minify),
           },
         ],
         isError: true,
@@ -968,7 +969,7 @@ async function main() {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(result, null, 2),
+            text: serializeToolResult(result, config.minify),
           },
         ],
       };
@@ -980,7 +981,7 @@ async function main() {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(lspError.toJSON()),
+              text: serializeToolResult(lspError.toJSON(), config.minify),
             },
           ],
           isError: true,
@@ -993,13 +994,13 @@ async function main() {
           content: [
             {
               type: 'text',
-              text: JSON.stringify({
+              text: serializeToolResult({
                 error: {
                   code: 'INVALID_INPUT',
                   message: 'Invalid input parameters',
                   details: (error as { issues: unknown[] }).issues,
                 },
-              }),
+              }, config.minify),
             },
           ],
           isError: true,
@@ -1014,13 +1015,13 @@ async function main() {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
+            text: serializeToolResult({
               error: {
                 code: 'INTERNAL_ERROR',
                 message,
                 suggestion: 'Check server logs for details.',
               },
-            }),
+            }, config.minify),
           },
         ],
         isError: true,

@@ -193,6 +193,9 @@ interface Config {
 
   // Idle timeout before shutting down unused servers (ms)
   idleTimeout: number;
+
+  // "default" strips whitespace; "full" also omits nulls; omitted/other disables
+  minify: "default" | "full" | false;
 }
 ```
 

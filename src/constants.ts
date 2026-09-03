@@ -119,6 +119,7 @@ export const DEFAULT_CONFIG: Config = {
   autoStart: true,
   logLevel: 'info',
   idleTimeout: 1800000, // 30 minutes
+  minify: false,
 };
 
 // ============================================================================

@@ -822,6 +822,50 @@ Or set `LSP_CONFIG_PATH` environment variable to specify a custom path.
 | `autoStart` | boolean | true | Auto-start servers on first request |
 | `logLevel` | string | "info" | Log level: debug, info, warn, error |
 | `idleTimeout` | number | 1800000 | Idle timeout before stopping servers (30 min) |
+| `minify` | string | omitted (disabled) | `"default"`: strip whitespace. `"full"`: strip whitespace and omit `null` properties. Any other value disables. |
+
+### minify
+
+Omitted or any value other than `"default"` / `"full"` leaves tool JSON pretty-printed.
+
+**Disabled** (omitted) — 181 tokens (`cl100k_base`):
+
+```json
+{
+  "references": [
+    {
+      "path": "/home/david/projects/app/src/tools/utils.ts",
+      "line": 79,
+      "column": 23,
+      "end_line": 79,
+      "end_column": 40,
+      "context": "export async function locationToResult(",
+      "symbol_name": "locationToResult",
+      "range": null
+    },
+    {
+      "path": "/home/david/projects/app/src/tools/references.ts",
+      "line": 55,
+      "column": 18,
+      "end_line": 55,
+      "end_column": 35,
+      "context": "result.map(loc => locationToResult(loc))"
+    }
+  ],
+  "total_count": 2,
+  "returned_count": 2,
+  "offset": 0,
+  "has_more": false
+}
+```
+
+**`"minify": "default"`** (whitespace only) — 116 tokens, **65 tokens saved (36%)** (`cl100k_base`). `"range": null` is kept:
+
+```json
+{"references":[{"path":"/home/david/projects/app/src/tools/utils.ts","line":79,"column":23,"end_line":79,"end_column":40,"context":"export async function locationToResult(","symbol_name":"locationToResult","range":null},{"path":"/home/david/projects/app/src/tools/references.ts","line":55,"column":18,"end_line":55,"end_column":35,"context":"result.map(loc => locationToResult(loc))"}],"total_count":2,"returned_count":2,"offset":0,"has_more":false}
+```
+
+**`"minify": "full"`** also omits `null` properties (`"range": null` disappears), 112 tokens, **69 tokens saved (38%)**.
 
 ### Server Configuration
 

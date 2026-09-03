@@ -20,8 +20,11 @@
  * SOFTWARE.
  */
 
-export * from './position.js';
-export * from './uri.js';
-export * from './workspace.js';
-export * from './logger.js';
-export * from './json.js';
+import { describe, it, expect } from 'vitest';
+import { DEFAULT_CONFIG } from '../../src/constants.js';
+
+describe('DEFAULT_CONFIG', () => {
+  it('disables minify by default', () => {
+    expect(DEFAULT_CONFIG.minify).toBe(false);
+  });
+});
