@@ -26,6 +26,7 @@ import * as os from 'os';
 import type { Config, LSPServerConfig } from './types.js';
 import { DEFAULT_CONFIG, DEFAULT_SERVERS } from './constants.js';
 import { isWorkspaceConfigurationMap } from './config/workspace-settings.js';
+import { parseMinify } from './utils/json.js';
 
 // ============================================================================
 // Configuration Loading
@@ -155,6 +156,8 @@ export async function loadConfig(): Promise<Config> {
     if (typeof userConfig.idleTimeout === 'number') {
       config.idleTimeout = userConfig.idleTimeout;
     }
+
+    config.minify = parseMinify(userConfig.minify);
   }
 
   // Environment variable overrides.
