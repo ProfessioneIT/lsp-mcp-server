@@ -549,6 +549,8 @@ export interface RenameResponse {
   edits_count: number;
   applied: boolean;
   original_name?: string;
+  /** Present when the server proposed changes lsp_rename cannot show or apply */
+  note?: string;
 }
 
 export interface ServerStatusResult {
