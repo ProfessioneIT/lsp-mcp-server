@@ -83,46 +83,45 @@ function getLanguageId(filePath: string): string {
 }
 
 /**
- * Create a unique key for tracking document state per client.
- */
-function createDocKey(uri: string, clientId: string): string {
-  return `${uri}:${clientId}`;
-}
-
-/**
  * Manages document synchronization with language servers.
+ *
+ * Open state is tracked per client *instance*, not per server id: the same
+ * server id can run several instances (one per workspace root), and a crashed
+ * or stopped server is replaced by a new client object. Each instance must
+ * receive its own didOpen, so documents are keyed by the client object itself.
+ * A WeakMap lets state for discarded clients be garbage-collected.
  */
 export class DocumentManagerImpl implements IDocumentManager {
-  private documents = new Map<string, DocumentState>();
+  private documentsByClient = new WeakMap<LSPClient, Map<string, DocumentState>>();
+  private clientIds = new WeakMap<LSPClient, number>();
+  private nextClientId = 1;
+  private latestContent = new Map<string, string>();
   private versionCounters = new Map<string, number>();
   private openLocks = new Map<string, Promise<void>>();
 
   /**
-   * Open a document with a specific client.
+   * Open a document with a specific client instance.
    */
   async openDocument(uri: string, client: LSPClient): Promise<void> {
-    const docKey = createDocKey(uri, client.serverId);
-
-    // Check if already open with this client
-    const existing = this.documents.get(docKey);
-    if (existing && existing.openWithClients.has(client.serverId)) {
+    if (this.docsFor(client).has(uri)) {
       return;
     }
 
-    // Check for concurrent opens
-    const existingLock = this.openLocks.get(docKey);
+    // Serialize concurrent opens of the same document on the same instance
+    const lockKey = `${this.clientId(client)}\u0000${uri}`;
+    const existingLock = this.openLocks.get(lockKey);
     if (existingLock) {
       await existingLock;
       return;
     }
 
-    const openPromise = this.openDocumentInternal(uri, client, docKey);
-    this.openLocks.set(docKey, openPromise);
+    const openPromise = this.openDocumentInternal(uri, client);
+    this.openLocks.set(lockKey, openPromise);
 
     try {
       await openPromise;
     } finally {
-      this.openLocks.delete(docKey);
+      this.openLocks.delete(lockKey);
     }
   }
 
@@ -134,39 +133,28 @@ export class DocumentManagerImpl implements IDocumentManager {
   }
 
   /**
-   * Close a document for a specific client.
+   * Close a document in a specific client instance.
    */
   async closeDocument(uri: string, client: LSPClient): Promise<void> {
-    const docKey = createDocKey(uri, client.serverId);
-    const doc = this.documents.get(docKey);
-
-    if (!doc) {
+    const docs = this.docsFor(client);
+    if (!docs.has(uri)) {
       return;
     }
 
-    doc.openWithClients.delete(client.serverId);
-
-    if (doc.openWithClients.size === 0) {
-      // No clients have this document open, close it
-      try {
-        client.didClose(uri);
-      } catch (error) {
-        logger.warn(`Error closing document: ${uri}`, error);
-      }
-
-      this.documents.delete(docKey);
-      // Clean up version counter to prevent memory leak
-      this.versionCounters.delete(uri);
-      logger.debug(`Closed document: ${uri}`);
+    docs.delete(uri);
+    try {
+      client.didClose(uri);
+    } catch (error) {
+      logger.warn(`Error closing document: ${uri}`, error);
     }
+    logger.debug(`Closed document: ${uri}`);
   }
 
   /**
    * Update document content (for unsaved changes).
    */
   async updateContent(uri: string, content: string, client: LSPClient): Promise<void> {
-    const docKey = createDocKey(uri, client.serverId);
-    const doc = this.documents.get(docKey);
+    const doc = this.docsFor(client).get(uri);
 
     if (!doc) {
       // Document not open, open it first with the new content
@@ -178,6 +166,7 @@ export class DocumentManagerImpl implements IDocumentManager {
     const newVersion = this.getNextVersion(uri);
     doc.version = newVersion;
     doc.content = content;
+    this.latestContent.set(uri, content);
 
     // Send didChange notification
     try {
@@ -189,25 +178,24 @@ export class DocumentManagerImpl implements IDocumentManager {
   }
 
   /**
-   * Get current content for a URI.
+   * Get the most recently opened or updated content for a URI.
    */
   getContent(uri: string): string | undefined {
-    // Find any document state with this URI
-    for (const [key, doc] of this.documents) {
-      if (key.startsWith(uri + ':')) {
-        return doc.content;
-      }
-    }
-    return undefined;
+    return this.latestContent.get(uri);
   }
 
   /**
-   * Check if document is open with a specific client.
+   * Check if document is open in a specific client instance.
    */
   isOpen(uri: string, client: LSPClient): boolean {
-    const docKey = createDocKey(uri, client.serverId);
-    const doc = this.documents.get(docKey);
-    return doc?.openWithClients.has(client.serverId) ?? false;
+    return this.docsFor(client).has(uri);
+  }
+
+  /**
+   * List the documents open in a specific client instance.
+   */
+  getOpenUris(client: LSPClient): string[] {
+    return [...this.docsFor(client).keys()];
   }
 
   /**
@@ -221,11 +209,7 @@ export class DocumentManagerImpl implements IDocumentManager {
   // Private Methods
   // ============================================================================
 
-  private async openDocumentInternal(
-    uri: string,
-    client: LSPClient,
-    docKey: string
-  ): Promise<void> {
+  private async openDocumentInternal(uri: string, client: LSPClient): Promise<void> {
     // Convert file:// URI to path for reading
     let filePath: string;
     if (uri.startsWith('file://')) {
@@ -243,49 +227,51 @@ export class DocumentManagerImpl implements IDocumentManager {
     const languageId = getLanguageId(filePath);
     const version = this.getNextVersion(uri);
 
-    // Create or update document state
-    let doc = this.documents.get(docKey);
-    if (!doc) {
-      doc = {
-        uri,
-        content,
-        version,
-        languageId,
-        openWithClients: new Set(),
-      };
-      this.documents.set(docKey, doc);
-    } else {
-      doc.content = content;
-      doc.version = version;
-    }
-
-    doc.openWithClients.add(client.serverId);
+    const doc: DocumentState = {
+      uri,
+      content,
+      version,
+      languageId,
+      openWithClients: new Set([client.serverId]),
+    };
 
     // Convert path to URI for LSP
     const lspUri = uri.startsWith('file://') ? uri : pathToUri(uri);
 
-    // Send didOpen notification
-    try {
-      client.didOpen({
-        uri: lspUri,
-        languageId,
-        version,
-        text: content,
-      });
+    // Send didOpen notification; only track the document once it succeeded
+    client.didOpen({
+      uri: lspUri,
+      languageId,
+      version,
+      text: content,
+    });
 
-      logger.debug(`Opened document: ${uri}`, {
-        languageId,
-        version,
-        contentLength: content.length,
-      });
-    } catch (error) {
-      // Remove from tracking if didOpen fails
-      doc.openWithClients.delete(client.serverId);
-      if (doc.openWithClients.size === 0) {
-        this.documents.delete(docKey);
-      }
-      throw error;
+    this.docsFor(client).set(uri, doc);
+    this.latestContent.set(uri, content);
+
+    logger.debug(`Opened document: ${uri}`, {
+      languageId,
+      version,
+      contentLength: content.length,
+    });
+  }
+
+  private docsFor(client: LSPClient): Map<string, DocumentState> {
+    let docs = this.documentsByClient.get(client);
+    if (!docs) {
+      docs = new Map();
+      this.documentsByClient.set(client, docs);
     }
+    return docs;
+  }
+
+  private clientId(client: LSPClient): number {
+    let id = this.clientIds.get(client);
+    if (id === undefined) {
+      id = this.nextClientId++;
+      this.clientIds.set(client, id);
+    }
+    return id;
   }
 
   private getNextVersion(uri: string): number {

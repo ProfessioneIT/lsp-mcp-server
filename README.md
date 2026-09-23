@@ -870,7 +870,7 @@ The following languages are supported out of the box:
 | **Python** | pylsp | `pylsp` | `.py`, `.pyi` | `pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`, `Pipfile` |
 | **Rust** | rust-analyzer | `rust-analyzer` | `.rs` | `Cargo.toml` |
 | **Go** | gopls | `gopls serve` | `.go` | `go.mod`, `go.work` |
-| **C/C++** | clangd | `clangd --background-index` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx`, `.c++`, `.h++` | `compile_commands.json`, `CMakeLists.txt`, `Makefile`, `.clangd` |
+| **C/C++** | clangd | `clangd --background-index` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx`, `.c++`, `.h++` | `compile_commands.json`, `compile_flags.txt`, `.clangd`, `CMakeLists.txt`, `Makefile` |
 | **Ruby** | solargraph | `solargraph stdio` | `.rb`, `.rake`, `.gemspec` | `Gemfile`, `.ruby-version`, `Rakefile` |
 | **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml`, `.php3`, `.php4`, `.php5`, `.phps` | `composer.json`, `index.php`, `.php-version` |
 | **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex`, `.sface` | `mix.exs`, `.formatter.exs` |
@@ -996,7 +996,7 @@ Each server in the `servers` array has:
 | `env` | object | No | Environment variables |
 | `initializationOptions` | object | No | LSP initialization options |
 | `workspaceConfigurations` | object | No | LSP settings keyed by exact, absolute workspace root |
-| `rootPatterns` | string[] | No | Files/dirs that indicate project root |
+| `rootPatterns` | string[] | No | Files/dirs that indicate project root, highest priority first |
 
 `workspaceConfigurations` enables the standard LSP pull model. When a server
 is started for an exact configured root, the client advertises
@@ -1064,7 +1064,7 @@ If you manage Java with [mise](https://mise.jdx.dev), launch the server through 
 
 Environment variables take precedence over the configuration file. The older names `LSP_MCP_LOG_LEVEL` and `LSP_MCP_REQUEST_TIMEOUT` are still accepted.
 
-Workspace roots are detected per file. The nearest parent directory containing one of the server's `rootPatterns` is used first. Only if none is found does `LSP_WORKSPACE_ROOT` apply, and after that the outermost directory containing a generic marker such as `.git` or `package.json`.
+Workspace roots are detected per file. The server's `rootPatterns` are tried in order: the nearest parent directory containing the first pattern wins, and the next pattern is only tried if no parent contains it. For example, a `compile_commands.json` at the project root wins over the `CMakeLists.txt` files in each source folder, so one clangd instance serves the whole project. Only if none is found does `LSP_WORKSPACE_ROOT` apply, and after that the outermost directory containing a generic marker such as `.git` or `package.json`.
 
 ## Security Features
 
@@ -1263,6 +1263,8 @@ Unlike other LSP features that are request-based, diagnostics are push-based:
 3. `lsp_diagnostics` and `lsp_workspace_diagnostics` tools read from the cache
 
 This means diagnostics are available immediately after files are opened, without an explicit request.
+
+When a file is deleted or renamed, its cached diagnostics are dropped the next time `lsp_workspace_diagnostics` or `lsp_index_files` runs, or when a tool is called on the old path. The file is also closed in the language server, and servers that registered for `workspace/didDeleteFiles` are notified.
 
 ### Automatic Server Lifecycle
 

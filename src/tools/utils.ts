@@ -20,8 +20,11 @@
  * SOFTWARE.
  */
 
+import * as fs from 'node:fs';
 import type { Location, LocationLink, MarkupContent } from 'vscode-languageserver-protocol';
 import type { LocationResult, LSPClient } from '../types.js';
+import { LSPError, LSPErrorCode } from '../types.js';
+import { logger } from '../utils/logger.js';
 import { uriToPath, readFile, pathToUri, ensureAbsolute } from '../utils/uri.js';
 import { fromLspRange, getLineContent, toLspPosition } from '../utils/position.js';
 import { SYMBOL_KIND_NAMES, COMPLETION_KIND_NAMES, DIAGNOSTIC_SEVERITY_NAMES } from '../constants.js';
@@ -39,6 +42,18 @@ export async function prepareFile(filePath: string): Promise<{
   const absolutePath = ensureAbsolute(filePath);
   const uri = pathToUri(absolutePath);
 
+  // A deleted file may still be open and cached; drop that state instead of
+  // answering from stale content.
+  if (!fs.existsSync(absolutePath)) {
+    await forgetDeletedFiles([uri]);
+    throw new LSPError(
+      LSPErrorCode.FILE_NOT_FOUND,
+      `File not found: ${absolutePath}`,
+      'Check that the path exists. Diagnostics and open state for deleted files are discarded.',
+      { file_path: absolutePath }
+    );
+  }
+
   // Get the client for this file
   const client = await ctx.connectionManager.getClientForFile(absolutePath);
 
@@ -49,6 +64,76 @@ export async function prepareFile(filePath: string): Promise<{
   const content = ctx.documentManager.getContent(uri) ?? await readFile(absolutePath);
 
   return { client, uri, content };
+}
+
+/**
+ * Forget files that no longer exist on disk.
+ *
+ * For each deleted file: close it in every running server instance that has it
+ * open, notify servers that registered for workspace/didDeleteFiles, and drop
+ * its cached diagnostics. Without this, diagnostics for deleted or renamed
+ * files are reported forever.
+ *
+ * @param candidateUris - URIs to check; defaults to every URI with cached
+ *   diagnostics or open in a running server instance
+ * @returns The URIs that were forgotten
+ */
+export async function forgetDeletedFiles(candidateUris?: Iterable<string>): Promise<string[]> {
+  const ctx = getToolContext();
+  const clients = ctx.connectionManager
+    .listActiveServers()
+    .map((instance) => instance.client)
+    .filter((client): client is LSPClient => client !== null);
+
+  const candidates = new Set<string>(candidateUris ?? []);
+  if (!candidateUris) {
+    for (const uri of ctx.diagnosticsCache.getUris()) {
+      candidates.add(uri);
+    }
+    for (const client of clients) {
+      for (const uri of ctx.documentManager.getOpenUris(client)) {
+        candidates.add(uri);
+      }
+    }
+  }
+
+  const deleted = [...candidates].filter((uri) => {
+    if (!uri.startsWith('file://')) {
+      return false;
+    }
+    try {
+      return !fs.existsSync(uriToPath(uri));
+    } catch {
+      return false;
+    }
+  });
+  if (deleted.length === 0) {
+    return [];
+  }
+
+  for (const client of clients) {
+    const closed: string[] = [];
+    for (const uri of deleted) {
+      if (ctx.documentManager.isOpen(uri, client)) {
+        await ctx.documentManager.closeDocument(uri, client);
+        closed.push(uri);
+      }
+    }
+    if (closed.length > 0) {
+      try {
+        client.didDeleteFiles(closed);
+      } catch (error) {
+        logger.warn('Failed to notify server about deleted files', error);
+      }
+    }
+  }
+
+  for (const uri of deleted) {
+    ctx.diagnosticsCache.clear(uri);
+  }
+
+  logger.debug(`Forgot ${deleted.length} deleted file(s)`, { uris: deleted });
+  return deleted;
 }
 
 /**

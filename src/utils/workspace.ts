@@ -121,8 +121,14 @@ export async function findWorkspaceRoot(
 /**
  * Find the workspace root using specific markers for a language server.
  *
+ * Markers are tried in priority order: for the first marker, walk up from the
+ * file and return the nearest directory that contains it; only if no ancestor
+ * contains it, try the next marker, and so on. This lets a project-level marker
+ * (e.g. a root compile_commands.json) win over lower-priority markers that also
+ * appear in subdirectories (e.g. a CMakeLists.txt in every source folder).
+ *
  * @param filePath - Starting file path
- * @param rootPatterns - Language-specific root patterns
+ * @param rootPatterns - Language-specific root patterns, highest priority first
  * @returns Workspace root path
  */
 export async function findWorkspaceRootForLanguage(
@@ -130,29 +136,43 @@ export async function findWorkspaceRootForLanguage(
   rootPatterns?: string[]
 ): Promise<string> {
   if (rootPatterns && rootPatterns.length > 0) {
-    // First try language-specific patterns
     const normalizedPath = normalizePath(filePath);
-    let currentDir = await isDirectory(normalizedPath)
+    const startDir = await isDirectory(normalizedPath)
       ? normalizedPath
       : getDirectory(normalizedPath);
 
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-      if (await hasMarker(currentDir, rootPatterns)) {
-        return currentDir;
+    for (const pattern of rootPatterns) {
+      const found = await findNearestWithMarker(startDir, pattern);
+      if (found) {
+        return found;
       }
-
-      const parent = path.dirname(currentDir);
-      if (parent === currentDir) {
-        break;
-      }
-      currentDir = parent;
     }
   }
 
   // Fall back to default detection
   return findWorkspaceRoot(filePath);
+}
+
+/**
+ * Walk up from startDir and return the nearest directory containing marker.
+ */
+async function findNearestWithMarker(startDir: string, marker: string): Promise<string | null> {
+  const root = path.parse(startDir).root;
+  let currentDir = startDir;
+
+  while (currentDir !== root) {
+    if (await hasMarker(currentDir, [marker])) {
+      return currentDir;
+    }
+
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) {
+      break;
+    }
+    currentDir = parent;
+  }
+
+  return null;
 }
 
 /**

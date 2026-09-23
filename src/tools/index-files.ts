@@ -22,7 +22,7 @@
 
 import type { IndexFilesInput } from '../schemas/tool-schemas.js';
 import type { IndexFilesResponse } from '../types.js';
-import { prepareFile } from './utils.js';
+import { prepareFile, forgetDeletedFiles } from './utils.js';
 
 /**
  * Open a list of files so the relevant language servers begin publishing
@@ -52,6 +52,10 @@ export async function handleIndexFiles(
       }
     }),
   );
+
+  // Re-indexing is also the point where files deleted since the last run are
+  // forgotten, so their stale diagnostics stop being reported.
+  await forgetDeletedFiles();
 
   return {
     opened,

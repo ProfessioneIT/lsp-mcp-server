@@ -22,7 +22,7 @@
 
 import type { DiagnosticsInput, WorkspaceDiagnosticsInput } from '../schemas/tool-schemas.js';
 import type { DiagnosticsResponse, DiagnosticResult, WorkspaceDiagnosticsResponse, WorkspaceDiagnosticItem } from '../types.js';
-import { prepareFile, getDiagnosticSeverityName, getDiagnosticMessageText } from './utils.js';
+import { prepareFile, getDiagnosticSeverityName, getDiagnosticMessageText, forgetDeletedFiles } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile } from '../utils/uri.js';
 import { getToolContext } from './context.js';
@@ -106,6 +106,9 @@ export async function handleWorkspaceDiagnostics(
 ): Promise<WorkspaceDiagnosticsResponse> {
   const { severity_filter, limit, group_by } = input;
   const ctx = getToolContext();
+
+  // Drop diagnostics for files deleted since they were reported
+  await forgetDeletedFiles();
 
   // Get all cached URIs
   const uris = ctx.diagnosticsCache.getUris();

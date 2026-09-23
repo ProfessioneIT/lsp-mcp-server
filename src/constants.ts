@@ -65,7 +65,7 @@ export const DEFAULT_SERVERS: LSPServerConfig[] = [
     languageIds: ['c', 'cpp'],
     command: 'clangd',
     args: ['--background-index'],
-    rootPatterns: ['compile_commands.json', 'CMakeLists.txt', 'Makefile', '.clangd'],
+    rootPatterns: ['compile_commands.json', 'compile_flags.txt', '.clangd', 'CMakeLists.txt', 'Makefile'],
   },
   {
     id: 'ruby',

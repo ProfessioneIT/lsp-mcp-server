@@ -166,6 +166,8 @@ export interface LSPClient {
   didOpen(document: TextDocumentItem): void;
   didChange(uri: string, version: number, changes: TextDocumentContentChangeEvent[]): void;
   didClose(uri: string): void;
+  /** Notify the server that files were deleted (no-op unless it registered for deletions) */
+  didDeleteFiles(uris: string[]): void;
 
   // Language features (positions are 0-indexed internally)
   definition(uri: string, position: Position): Promise<Location | Location[] | LocationLink[] | null>;
@@ -288,6 +290,9 @@ export interface DocumentManager {
 
   /** Check if document is open with a specific client */
   isOpen(uri: string, client: LSPClient): boolean;
+
+  /** List the documents open in a specific client instance */
+  getOpenUris(client: LSPClient): string[];
 
   /** Get current version for a URI */
   getVersion(uri: string): number;

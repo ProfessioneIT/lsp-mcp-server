@@ -55,6 +55,7 @@ import {
   InlayHintRequest,
   SelectionRangeRequest,
   FoldingRangeRequest,
+  DidDeleteFilesNotification,
   type TextDocumentPositionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
@@ -347,6 +348,9 @@ export class LSPClientImpl implements ILSPClient {
         },
         workspace: {
           workspaceFolders: true,
+          fileOperations: {
+            didDelete: true,
+          },
           ...(workspaceConfigurationBridge
             ? {
                 configuration: true,
@@ -457,6 +461,20 @@ export class LSPClientImpl implements ILSPClient {
     });
     // Clear cached diagnostics for this document
     this.diagnosticsCache.delete(uri);
+  }
+
+  didDeleteFiles(uris: string[]): void {
+    // Only servers that registered interest in deletions get the notification
+    if (uris.length === 0 || !this._capabilities.workspace?.fileOperations?.didDelete) {
+      return;
+    }
+    this.ensureConnection();
+    this.connection!.sendNotification(DidDeleteFilesNotification.type, {
+      files: uris.map((uri) => ({ uri })),
+    });
+    for (const uri of uris) {
+      this.diagnosticsCache.delete(uri);
+    }
   }
 
   // ============================================================================
