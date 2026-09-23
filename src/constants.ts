@@ -96,7 +96,7 @@ export const DEFAULT_SERVERS: LSPServerConfig[] = [
     extensions: ['.kt', '.kts'],
     languageIds: ['kotlin'],
     command: 'kotlin-lsp',
-    args: [],
+    args: ['--stdio'],
     rootPatterns: ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'],
   },
   {

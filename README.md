@@ -87,11 +87,15 @@ mix escript.install hex elixir_ls
 # Or download pre-built releases from:
 # https://github.com/elixir-lsp/elixir-ls/releases
 
-# Kotlin
+# Kotlin: JetBrains kotlin-lsp (bundles its own Java runtime)
 # macOS:
 brew install JetBrains/utils/kotlin-lsp
-# Or download from:
+# Linux/Windows: download the .vsix for your platform from
 # https://github.com/Kotlin/kotlin-lsp/releases
+# then unzip it and link extension/server/kotlin-lsp.sh as 'kotlin-lsp'
+#
+# Alternative: fwcd/kotlin-language-server does not start on JDK 25.
+# Run it on JDK 21, see "Running a Server on a Specific JDK" below.
 
 # Java (requires Java 20+, Maven, npm, protobuf)
 git clone https://github.com/idelice/jls
@@ -870,7 +874,7 @@ The following languages are supported out of the box:
 | **Ruby** | solargraph | `solargraph stdio` | `.rb`, `.rake`, `.gemspec` | `Gemfile`, `.ruby-version`, `Rakefile` |
 | **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml`, `.php3`, `.php4`, `.php5`, `.phps` | `composer.json`, `index.php`, `.php-version` |
 | **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex`, `.sface` | `mix.exs`, `.formatter.exs` |
-| **Kotlin** | kotlin-lsp | `kotlin-lsp` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
+| **Kotlin** | kotlin-lsp | `kotlin-lsp --stdio` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
 | **Java** | jls | `jls` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `BUILD`, `.classpath` |
 
 You can add additional languages by providing a custom configuration (see [Configuration](#configuration)).
@@ -987,6 +991,31 @@ Each server in the `servers` array has:
 | `rootPatterns` | string[] | No | Files/dirs that indicate project root |
 
 Each language server process is started with the detected workspace root as its working directory. Servers that look up project settings from their working directory, such as a `.venv`, `pyproject.toml` or `go.mod`, therefore see the project's files rather than the directory lsp-mcp-server was launched from. A relative `command` path is also resolved against the workspace root.
+
+### Running a Server on a Specific JDK
+
+Some JVM-based servers need an older JDK than your default. For example, [fwcd/kotlin-language-server](https://github.com/fwcd/kotlin-language-server) fails at startup on JDK 25 and works on JDK 21. Its launch script honors `JAVA_HOME`, so you can set it per server:
+
+```json
+{
+  "id": "kotlin",
+  "extensions": [".kt", ".kts"],
+  "languageIds": ["kotlin"],
+  "command": "/path/to/kotlin-language-server/server/build/install/server/bin/kotlin-language-server",
+  "args": [],
+  "env": {
+    "JAVA_HOME": "/path/to/jdk-21"
+  },
+  "rootPatterns": ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"]
+}
+```
+
+If you manage Java with [mise](https://mise.jdx.dev), launch the server through `mise exec` instead. This also works for launchers that ignore `JAVA_HOME` and run whichever `java` is first on `PATH`, such as jls. Use the absolute path to the mise binary, because servers are started without a shell:
+
+```json
+"command": "/home/you/.local/bin/mise",
+"args": ["exec", "java@temurin-21", "--", "/path/to/kotlin-language-server/server/build/install/server/bin/kotlin-language-server"]
+```
 
 ### Environment Variables
 
