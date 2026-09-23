@@ -220,6 +220,15 @@ export const RESTART_WINDOW_MS = 300000; // 5 minutes
 /** Base delay for exponential backoff (ms) */
 export const RESTART_BASE_DELAY_MS = 1000;
 
+/**
+ * After opening a document, how long to wait for the server to start work it
+ * reports via work-done progress (e.g. project loading), before assuming none.
+ */
+export const SERVER_WORK_SETTLE_MS = 300;
+
+/** Upper bound on waiting for work triggered by opening a document (ms) */
+export const SERVER_WORK_MAX_WAIT_MS = 15000;
+
 /** Maximum results for find references */
 export const MAX_REFERENCES = 500;
 

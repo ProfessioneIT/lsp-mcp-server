@@ -56,6 +56,7 @@ import {
   SelectionRangeRequest,
   FoldingRangeRequest,
   DidDeleteFilesNotification,
+  WorkDoneProgressCreateRequest,
   type TextDocumentPositionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
@@ -121,6 +122,8 @@ interface MessageConnection extends WorkspaceConfigurationConnection {
   sendNotification(type: unknown, params?: unknown): void;
   onNotification(type: unknown, handler: (params: unknown) => void): void;
   onNotification(handler: (method: string, params: unknown) => void): void;
+  onRequest(type: unknown, handler: (params: never) => unknown): unknown;
+  onUnhandledProgress(handler: (params: { token: string | number; value: unknown }) => void): unknown;
 }
 
 // IMPORTANT: import the JSON-RPC connection primitives from vscode-languageserver-protocol,
@@ -158,6 +161,8 @@ export class LSPClientImpl implements ILSPClient {
   private errorHandlers: ErrorHandler[] = [];
   private exitHandlers: ExitHandler[] = [];
   private _nextRequestId = 1;
+  /** Work-done progress tokens the server has open, with the time each started */
+  private activeProgress = new Map<string | number, number>();
 
   constructor(
     private readonly config: LSPServerConfig,
@@ -223,6 +228,7 @@ export class LSPClientImpl implements ILSPClient {
     const reader = new StreamMessageReader(this.process.stdout);
     const writer = new StreamMessageWriter(this.process.stdin);
     this.connection = createMessageConnection(reader, writer) as MessageConnection;
+    this.registerProgressTracking(this.connection);
 
     const workspaceSettings = getWorkspaceSettings(
       this.config.workspaceConfigurations,
@@ -263,6 +269,9 @@ export class LSPClientImpl implements ILSPClient {
       processId: process.pid,
       rootUri: pathToUri(rootUri),
       capabilities: {
+        window: {
+          workDoneProgress: true,
+        },
         textDocument: {
           synchronization: {
             dynamicRegistration: false,
@@ -371,10 +380,7 @@ export class LSPClientImpl implements ILSPClient {
     };
 
     try {
-      const result = await this.connection.sendRequest(
-        InitializeRequest.type,
-        initParams
-      ) as InitializeResult;
+      const result = await this.initializeOrFail(initParams);
 
       this._capabilities = result.capabilities;
       this._isInitialized = true;
@@ -391,6 +397,14 @@ export class LSPClientImpl implements ILSPClient {
     } catch (error) {
       this.cleanup();
       const errorMessage = error instanceof Error ? error.message : String(error);
+      if (error instanceof LSPError && error.code === LSPErrorCode.SERVER_TIMEOUT) {
+        throw new LSPError(
+          LSPErrorCode.SERVER_TIMEOUT,
+          `Language server did not answer initialize within ${this.timeout}ms: ${this.config.id}`,
+          'Check the server command and arguments; some servers need a flag such as --stdio to use stdio.',
+          { server_id: this.config.id }
+        );
+      }
       throw new LSPError(
         LSPErrorCode.SERVER_START_FAILED,
         `Failed to initialize language server: ${this.config.id}: ${errorMessage}`,
@@ -586,10 +600,16 @@ export class LSPClientImpl implements ILSPClient {
     uri: string,
     position: Position
   ): Promise<Range | { range: Range; placeholder: string } | null> {
-    // prepareRename is optional - check if supported
-    if (!this._capabilities.renameProvider ||
-        (typeof this._capabilities.renameProvider === 'object' &&
-         !this._capabilities.renameProvider.prepareProvider)) {
+    // prepareRename is optional. Per LSP spec, renameProvider === true means
+    // rename is supported WITHOUT prepareRename. Only send prepareRename when the
+    // server advertises an object with prepareProvider; otherwise the server may
+    // answer MethodNotFound (-32601) and abort the rename (e.g. pylsp/rope).
+    const renameProvider = this._capabilities.renameProvider;
+    if (
+      typeof renameProvider !== 'object' ||
+      renameProvider === null ||
+      !renameProvider.prepareProvider
+    ) {
       // Not supported, return null to indicate rename should proceed without prepare
       return null;
     }
@@ -828,6 +848,25 @@ export class LSPClientImpl implements ILSPClient {
     params: unknown
   ): Promise<R> {
     this.ensureConnection();
+    return this.sendRequestWithTimeout<R>(type, params);
+  }
+
+  /**
+   * Send a request with the configured timeout. Unlike sendRequest, this does
+   * not require the server to be initialized, so initialize itself can use it.
+   */
+  private async sendRequestWithTimeout<R>(
+    type: { method: string },
+    params: unknown
+  ): Promise<R> {
+    if (!this.connection) {
+      throw new LSPError(
+        LSPErrorCode.SERVER_NOT_READY,
+        'Language server connection is not open',
+        'Start the server first.',
+        { server_id: this.config.id }
+      );
+    }
 
     const id = this._nextRequestId++;
     const tokenSource = new CancellationTokenSource();
@@ -909,10 +948,79 @@ export class LSPClientImpl implements ILSPClient {
     }
   }
 
+  /**
+   * Send the initialize request, failing on timeout or if the server process
+   * exits first, instead of waiting forever for a server that never answers.
+   */
+  private async initializeOrFail(initParams: InitializeParams): Promise<InitializeResult> {
+    const proc = this.process;
+    let onExit: ((code: number | null) => void) | undefined;
+    const exited = new Promise<never>((_, reject) => {
+      onExit = (code) => reject(new Error(`Language server exited during initialization (exit code ${code})`));
+      proc?.once('exit', onExit);
+    });
+    exited.catch(() => {});
+
+    try {
+      return await Promise.race([
+        this.sendRequestWithTimeout<InitializeResult>(InitializeRequest.type, initParams),
+        exited,
+      ]);
+    } finally {
+      if (onExit) {
+        proc?.off('exit', onExit);
+      }
+    }
+  }
+
+  /**
+   * Track work-done progress the server reports (e.g. project loading or
+   * indexing), so callers can wait for work triggered by opening a document.
+   */
+  private registerProgressTracking(connection: MessageConnection): void {
+    connection.onRequest(WorkDoneProgressCreateRequest.type, (params: { token: string | number }) => {
+      this.activeProgress.set(params.token, Date.now());
+      return null;
+    });
+
+    connection.onUnhandledProgress(({ token, value }) => {
+      const kind = (value as { kind?: string } | undefined)?.kind;
+      if (kind === 'begin' && !this.activeProgress.has(token)) {
+        this.activeProgress.set(token, Date.now());
+      } else if (kind === 'end') {
+        this.activeProgress.delete(token);
+      }
+    });
+  }
+
+  /**
+   * Wait until work the server started at or after `since` has finished.
+   *
+   * Always waits at least `windowMs` after `since`, so progress the server
+   * starts shortly after a didOpen is seen, and never longer than `maxMs`.
+   * Progress that began before `since` (e.g. long-running background
+   * indexing) is ignored.
+   */
+  async waitForServerWork(since: number, windowMs: number, maxMs: number): Promise<void> {
+    const deadline = Date.now() + maxMs;
+    while (Date.now() < deadline) {
+      const busy = [...this.activeProgress.values()].some((startedAt) => startedAt >= since);
+      if (!busy && Date.now() - since >= windowMs) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    logger.debug(`Stopped waiting for server work after ${maxMs}ms: ${this.config.id}`);
+  }
+
   private cleanup(): void {
-    // Cancel all pending requests
-    for (const tokenSource of this.pendingRequests.values()) {
-      tokenSource.cancel();
+    // Cancel pending requests, unless the process is already gone: cancelling
+    // then makes vscode-jsonrpc log "Connection is closed" errors.
+    const processAlive = this.process !== null && this.process.exitCode === null && this.process.signalCode === null;
+    if (processAlive) {
+      for (const tokenSource of this.pendingRequests.values()) {
+        tokenSource.cancel();
+      }
     }
     this.pendingRequests.clear();
 

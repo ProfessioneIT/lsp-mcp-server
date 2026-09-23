@@ -264,3 +264,19 @@ export function clampPosition(
 
   return { line: clampedLine, column: clampedColumn };
 }
+
+/**
+ * Clamp an LSP position to the document: a line past the end becomes the end
+ * of the document, and a character past the end of its line becomes the end
+ * of that line. Servers reject out-of-range positions in range requests
+ * (e.g. rust-analyzer: "Invalid offset"), so ranges are clamped before sending.
+ */
+export function clampToDocument(position: Position, content: string): Position {
+  const lines = content.split('\n');
+  const lastLine = lines.length - 1;
+  if (position.line > lastLine) {
+    return { line: lastLine, character: lines[lastLine]!.replace(/\r$/, '').length };
+  }
+  const lineLength = lines[position.line]!.replace(/\r$/, '').length;
+  return { line: position.line, character: Math.min(position.character, lineLength) };
+}

@@ -166,6 +166,13 @@ export interface LSPClient {
   didOpen(document: TextDocumentItem): void;
   didChange(uri: string, version: number, changes: TextDocumentContentChangeEvent[]): void;
   didClose(uri: string): void;
+
+  /**
+   * Wait until work the server started at or after `since` (epoch ms) has
+   * finished, as reported through work-done progress. Waits at least
+   * `windowMs` after `since` and at most `maxMs` from now.
+   */
+  waitForServerWork(since: number, windowMs: number, maxMs: number): Promise<void>;
   /** Notify the server that files were deleted (no-op unless it registered for deletions) */
   didDeleteFiles(uris: string[]): void;
 
@@ -549,6 +556,8 @@ export interface RenameResponse {
   edits_count: number;
   applied: boolean;
   original_name?: string;
+  /** Present when the server proposed changes lsp_rename cannot show or apply */
+  note?: string;
 }
 
 export interface ServerStatusResult {

@@ -24,7 +24,7 @@ import type { InlayHint } from 'vscode-languageserver-protocol';
 import type { InlayHintsInput } from '../schemas/tool-schemas.js';
 import type { InlayHintsResponse, InlayHintResult } from '../types.js';
 import { prepareFile, toPosition } from './utils.js';
-import { fromLspPosition } from '../utils/position.js';
+import { clampToDocument, fromLspPosition } from '../utils/position.js';
 
 const KIND_NAMES: Record<number, 'type' | 'parameter'> = {
   1: 'type',
@@ -52,8 +52,8 @@ export async function handleInlayHints(
   const { client, uri, content } = await prepareFile(file_path);
 
   const range = {
-    start: toPosition(start_line, start_column, content),
-    end: toPosition(end_line, end_column, content),
+    start: clampToDocument(toPosition(start_line, start_column, content), content),
+    end: clampToDocument(toPosition(end_line, end_column, content), content),
   };
 
   const result = await client.inlayHints(uri, range);

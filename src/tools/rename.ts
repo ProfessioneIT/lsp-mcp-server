@@ -26,8 +26,10 @@ import type { RenameResponse, RenameEdit } from '../types.js';
 import { prepareFile, toPosition } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
-import { LSPError, LSPErrorCode } from '../types.js';
 import * as fs from 'fs/promises';
+import { collectTextEdits } from '../utils/workspace-edit.js';
+import type { ServerCapabilities } from 'vscode-languageserver-protocol';
+import { LSPError, LSPErrorCode } from '../types.js';
 
 /**
  * Convert TextEdit to RenameEdit.
@@ -119,28 +121,56 @@ export async function handleRename(
   // Convert position
   const position = toPosition(line, column, content);
 
-  // First, check if rename is valid at this position
-  const prepareResult = await client.prepareRename(uri, position);
+  // Per the LSP spec, only servers advertising `renameProvider.prepareProvider`
+  // support prepareRename; `renameProvider: true` means rename without it.
+  // When the server does support it, a null result or an error means the
+  // position cannot be renamed, and that must be reported rather than turned
+  // into an empty rename. The one exception is MethodNotFound, from servers
+  // that advertise prepareProvider without implementing it.
+  let prepareResult: Awaited<ReturnType<typeof client.prepareRename>> = null;
+  if (supportsPrepareRename(client.capabilities)) {
+    let prepareImplemented = true;
+    try {
+      prepareResult = await client.prepareRename(uri, position);
+    } catch (error) {
+      if (!isMethodNotFound(error)) {
+        throw error;
+      }
+      prepareImplemented = false;
+    }
 
-  if (!prepareResult) {
-    throw new LSPError(
-      LSPErrorCode.RENAME_NOT_ALLOWED,
-      'Rename is not allowed at this position',
-      'Move cursor to a renameable symbol (variable, function, class, etc.)',
-      { file_path, position: { line, column } }
-    );
+    if (prepareImplemented && !prepareResult) {
+      throw new LSPError(
+        LSPErrorCode.RENAME_NOT_ALLOWED,
+        'Rename is not allowed at this position',
+        'Move cursor to a renameable symbol (variable, function, class, etc.)',
+        { file_path, position: { line, column } }
+      );
+    }
   }
 
   // Extract original name if available
   let originalName: string | undefined;
-  if ('placeholder' in prepareResult) {
+  if (prepareResult && typeof prepareResult === 'object' && 'placeholder' in prepareResult) {
     originalName = prepareResult.placeholder;
   }
 
   // Perform rename
   const workspaceEdit = await client.rename(uri, position, new_name);
 
-  if (!workspaceEdit || !workspaceEdit.changes) {
+  const { editsByUri, fileOperations } = collectTextEdits(workspaceEdit);
+
+  if (fileOperations > 0 && !dry_run) {
+    // Refuse before writing anything, rather than applying half a rename
+    throw new LSPError(
+      LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+      'This rename also creates, renames, or deletes files, which lsp_rename cannot apply',
+      'Run with dry_run=true to preview the text edits, then apply them and the file operations manually.',
+      { file_path }
+    );
+  }
+
+  if (Object.keys(editsByUri).length === 0) {
     const emptyResult: RenameResponse = {
       changes: {},
       files_affected: 0,
@@ -161,7 +191,7 @@ export async function handleRename(
   const contentCache = new Map<string, string>();
   contentCache.set(uri, content);
 
-  for (const [fileUri, edits] of Object.entries(workspaceEdit.changes)) {
+  for (const [fileUri, edits] of Object.entries(editsByUri)) {
     const filePath = uriToPath(fileUri);
 
     // Get or cache content
@@ -189,7 +219,7 @@ export async function handleRename(
   if (!dry_run) {
     const workspaceRoot = client.workspaceRoot;
 
-    for (const [fileUri, edits] of Object.entries(workspaceEdit.changes)) {
+    for (const [fileUri, edits] of Object.entries(editsByUri)) {
       const filePath = uriToPath(fileUri);
       // Validate file is within workspace to prevent writing outside it
       validatePathWithinWorkspace(filePath, workspaceRoot);
@@ -208,5 +238,21 @@ export async function handleRename(
     response.original_name = originalName;
   }
 
+  if (fileOperations > 0) {
+    response.note = `The server also proposed ${fileOperations} file operation(s) (create, rename, or delete), which are not shown and cannot be applied by lsp_rename.`;
+  }
+
   return response;
+}
+
+/** JSON-RPC error code for a method the server does not implement. */
+const METHOD_NOT_FOUND = -32601;
+
+function supportsPrepareRename(capabilities: ServerCapabilities): boolean {
+  const provider = capabilities.renameProvider;
+  return typeof provider === 'object' && provider !== null && provider.prepareProvider === true;
+}
+
+function isMethodNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === METHOD_NOT_FOUND;
 }

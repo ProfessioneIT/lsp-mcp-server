@@ -25,9 +25,10 @@ import type { CodeActionsInput } from '../schemas/tool-schemas.js';
 import type { CodeActionsResponse, CodeActionResult, DiagnosticResult } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 import { prepareFile, toPosition, getDiagnosticSeverityName, getDiagnosticMessageText } from './utils.js';
-import { fromLspRange } from '../utils/position.js';
+import { clampToDocument, fromLspRange } from '../utils/position.js';
 import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
 import * as fs from 'fs/promises';
+import { collectTextEdits } from '../utils/workspace-edit.js';
 
 /**
  * Check if the action is a CodeAction (not just a Command).
@@ -42,7 +43,8 @@ function isCodeAction(action: CodeAction | Command): action is CodeAction {
 function convertWorkspaceEdit(
   edit: WorkspaceEdit | undefined
 ): CodeActionResult['edit'] | undefined {
-  if (!edit || !edit.changes) {
+  const { editsByUri } = collectTextEdits(edit);
+  if (Object.keys(editsByUri).length === 0) {
     return undefined;
   }
 
@@ -53,7 +55,7 @@ function convertWorkspaceEdit(
 
   let filesAffected = 0;
 
-  for (const [uri, edits] of Object.entries(edit.changes)) {
+  for (const [uri, edits] of Object.entries(editsByUri)) {
     const filePath = uriToPath(uri);
     filesAffected++;
 
@@ -102,13 +104,20 @@ function convertDiagnostic(diag: { range: { start: { line: number; character: nu
  * Apply edits from a WorkspaceEdit to files.
  */
 async function applyWorkspaceEdit(edit: WorkspaceEdit, workspaceRoot: string): Promise<number> {
-  if (!edit.changes) {
-    return 0;
+  const { editsByUri, fileOperations } = collectTextEdits(edit);
+
+  // Refuse before writing anything, rather than applying half an edit
+  if (fileOperations > 0) {
+    throw new LSPError(
+      LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+      'This code action also creates, renames, or deletes files, which lsp_code_actions cannot apply',
+      'Apply this action from an editor, or make the changes manually.'
+    );
   }
 
   let filesModified = 0;
 
-  for (const [fileUri, edits] of Object.entries(edit.changes)) {
+  for (const [fileUri, edits] of Object.entries(editsByUri)) {
     const filePath = uriToPath(fileUri);
 
     // Validate file is within workspace before writing
@@ -169,8 +178,8 @@ export async function handleCodeActions(
   const { client, uri, content } = await prepareFile(file_path);
 
   // Build the range
-  const startPos = toPosition(start_line, start_column, content);
-  const endPos = toPosition(end_line ?? start_line, end_column ?? start_column, content);
+  const startPos = clampToDocument(toPosition(start_line, start_column, content), content);
+  const endPos = clampToDocument(toPosition(end_line ?? start_line, end_column ?? start_column, content), content);
 
   const range = {
     start: startPos,
