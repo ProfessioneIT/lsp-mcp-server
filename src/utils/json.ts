@@ -20,8 +20,22 @@
  * SOFTWARE.
  */
 
-export * from './position.js';
-export * from './uri.js';
-export * from './workspace.js';
-export * from './logger.js';
-export * from './json.js';
+import type { MinifyMode } from '../types.js';
+
+function omitNull(_key: string, value: unknown): unknown {
+  return value === null ? undefined : value;
+}
+
+export function parseMinify(value: unknown): MinifyMode {
+  return value === 'default' || value === 'full' ? value : false;
+}
+
+export function serializeToolResult(value: unknown, minify: MinifyMode = false): string {
+  if (minify === 'full') {
+    return JSON.stringify(value, omitNull) ?? 'null';
+  }
+  if (minify === 'default') {
+    return JSON.stringify(value) ?? 'null';
+  }
+  return JSON.stringify(value, null, 2) ?? 'null';
+}

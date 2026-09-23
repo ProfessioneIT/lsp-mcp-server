@@ -133,7 +133,12 @@ export interface Config {
 
   /** Idle timeout before shutting down unused servers (ms) */
   idleTimeout: number;
+
+  /** Tool JSON minification: "default" (whitespace), "full" (whitespace + omit nulls), or false (disabled) */
+  minify: MinifyMode;
 }
+
+export type MinifyMode = 'default' | 'full' | false;
 
 // ============================================================================
 // LSP Client Types
