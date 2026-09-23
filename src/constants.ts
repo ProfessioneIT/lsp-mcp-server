@@ -229,6 +229,9 @@ export const SERVER_WORK_SETTLE_MS = 300;
 /** Upper bound on waiting for work triggered by opening a document (ms) */
 export const SERVER_WORK_MAX_WAIT_MS = 15000;
 
+/** After opening or changing a document, how long lsp_diagnostics waits for fresh diagnostics (ms) */
+export const DIAGNOSTICS_WAIT_MS = 3000;
+
 /** Maximum results for find references */
 export const MAX_REFERENCES = 500;
 

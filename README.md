@@ -1160,12 +1160,12 @@ npm install -g typescript-language-server typescript
 
 **Issue:** `lsp_diagnostics` returns empty results
 
-**Explanation:** Diagnostics are push-based. The language server sends them when files are opened or changed.
+**Explanation:** Diagnostics are push-based. The language server sends them when files are opened or changed. `lsp_diagnostics` opens the file if needed, sends the current content if the file changed on disk, and then waits up to 3 seconds for the server to publish diagnostics. Empty results usually mean the server has not analyzed the file yet or reports no problems.
 
 **Solution:**
-1. Open the file using another tool first
-2. Wait a moment for the server to analyze
-3. Try again
+1. Call `lsp_diagnostics` again after a few seconds; large projects can take longer to analyze on first open
+2. Check with `lsp_server_status` that the server is running for this file's workspace
+3. Some servers only report certain problems on save or build (e.g. rust-analyzer runs `cargo check`), which can take longer
 
 ### Server Fails to Start
 

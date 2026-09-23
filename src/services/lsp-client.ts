@@ -31,6 +31,7 @@ import {
   DidOpenTextDocumentNotification,
   DidChangeTextDocumentNotification,
   DidCloseTextDocumentNotification,
+  DidSaveTextDocumentNotification,
   DefinitionRequest,
   TypeDefinitionRequest,
   ReferencesRequest,
@@ -163,6 +164,8 @@ export class LSPClientImpl implements ILSPClient {
   private _nextRequestId = 1;
   /** Work-done progress tokens the server has open, with the time each started */
   private activeProgress = new Map<string | number, number>();
+  /** When diagnostics were last published for each URI */
+  private diagnosticsPublishedAt = new Map<string, number>();
 
   constructor(
     private readonly config: LSPServerConfig,
@@ -475,6 +478,28 @@ export class LSPClientImpl implements ILSPClient {
     });
     // Clear cached diagnostics for this document
     this.diagnosticsCache.delete(uri);
+  }
+
+  didSave(uri: string): void {
+    this.ensureConnection();
+    this.connection!.sendNotification(DidSaveTextDocumentNotification.type, {
+      textDocument: { uri } as TextDocumentIdentifier,
+    });
+  }
+
+  /**
+   * Wait until the server publishes diagnostics for `uri` at or after `since`.
+   * Returns false if none arrive within `maxMs`.
+   */
+  async waitForDiagnostics(uri: string, since: number, maxMs: number): Promise<boolean> {
+    const deadline = Date.now() + maxMs;
+    while (Date.now() < deadline) {
+      if ((this.diagnosticsPublishedAt.get(uri) ?? 0) >= since) {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return false;
   }
 
   didDeleteFiles(uris: string[]): void {
@@ -827,6 +852,7 @@ export class LSPClientImpl implements ILSPClient {
       (params: unknown) => {
         const p = params as { uri: string; diagnostics: Diagnostic[] };
         this.diagnosticsCache.set(p.uri, p.diagnostics);
+        this.diagnosticsPublishedAt.set(p.uri, Date.now());
         for (const handler of this.diagnosticsHandlers) {
           try {
             handler(p.uri, p.diagnostics);

@@ -83,6 +83,20 @@ function getLanguageId(filePath: string): string {
 }
 
 /**
+ * Convert a file:// URI (or a plain path) to a filesystem path for reading.
+ */
+function uriToFilePath(uri: string): string {
+  if (!uri.startsWith('file://')) {
+    return uri;
+  }
+  let filePath = uri.slice(7);
+  if (process.platform === 'win32' && filePath.startsWith('/')) {
+    filePath = filePath.slice(1);
+  }
+  return decodeURIComponent(filePath);
+}
+
+/**
  * Manages document synchronization with language servers.
  *
  * Open state is tracked per client *instance*, not per server id: the same
@@ -178,6 +192,32 @@ export class DocumentManagerImpl implements IDocumentManager {
   }
 
   /**
+   * If the document is open in this client instance and the file on disk no
+   * longer matches what the server has, send the new content. Edits are made
+   * outside this server (e.g. by an editor or agent), so without this the
+   * server keeps analyzing the content from when the file was first opened.
+   */
+  async syncWithDisk(uri: string, client: LSPClient): Promise<boolean> {
+    const doc = this.docsFor(client).get(uri);
+    if (!doc) {
+      return false;
+    }
+
+    const content = await readFile(uriToFilePath(uri));
+    if (content === doc.content) {
+      return false;
+    }
+
+    await this.updateContent(uri, content, client);
+    try {
+      client.didSave(uri);
+    } catch (error) {
+      logger.warn(`Error sending didSave: ${uri}`, error);
+    }
+    return true;
+  }
+
+  /**
    * Get the most recently opened or updated content for a URI.
    */
   getContent(uri: string): string | undefined {
@@ -210,17 +250,7 @@ export class DocumentManagerImpl implements IDocumentManager {
   // ============================================================================
 
   private async openDocumentInternal(uri: string, client: LSPClient): Promise<void> {
-    // Convert file:// URI to path for reading
-    let filePath: string;
-    if (uri.startsWith('file://')) {
-      filePath = uri.slice(7);
-      if (process.platform === 'win32' && filePath.startsWith('/')) {
-        filePath = filePath.slice(1);
-      }
-      filePath = decodeURIComponent(filePath);
-    } else {
-      filePath = uri;
-    }
+    const filePath = uriToFilePath(uri);
 
     // Read file content
     const content = await readFile(filePath);

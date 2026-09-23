@@ -4,8 +4,12 @@
 //   loading  - after didOpen, "loads the project" for FIXTURE_LOAD_MS; while
 //              loading, references return only the local result. Loading is
 //              reported with window/workDoneProgress when the client supports it.
+// With FIXTURE_DIAG_DELAY_MS set, every didOpen/didChange publishes one diagnostic
+// whose message is the document text, after that delay.
 import {
+  DidChangeTextDocumentNotification,
   DidOpenTextDocumentNotification,
+  PublishDiagnosticsNotification,
   InitializeRequest,
   ReferencesRequest,
   WorkDoneProgress,
@@ -39,7 +43,23 @@ connection.onRequest(InitializeRequest.type, (params) => {
   return { capabilities: { referencesProvider: true } };
 });
 
-connection.onNotification(DidOpenTextDocumentNotification.type, async () => {
+const diagDelayMs = process.env.FIXTURE_DIAG_DELAY_MS ? Number(process.env.FIXTURE_DIAG_DELAY_MS) : null;
+function publishLater(uri, text) {
+  if (diagDelayMs === null) return;
+  setTimeout(() => {
+    connection.sendNotification(PublishDiagnosticsNotification.type, {
+      uri,
+      diagnostics: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message: text, severity: 1 }],
+    });
+  }, diagDelayMs);
+}
+
+connection.onNotification(DidChangeTextDocumentNotification.type, (params) => {
+  publishLater(params.textDocument.uri, params.contentChanges.at(-1).text);
+});
+
+connection.onNotification(DidOpenTextDocumentNotification.type, async (params) => {
+  publishLater(params.textDocument.uri, params.textDocument.text);
   if (loaded || process.env.FIXTURE_NO_LOAD === 'true') {
     loaded = true;
     return;
