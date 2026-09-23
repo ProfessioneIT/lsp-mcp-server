@@ -22,6 +22,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath, URL } from 'node:url';
 import { BINARY_EXTENSIONS, BINARY_CHECK_BYTES, MAX_FILE_SIZE_BYTES } from '../constants.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 
@@ -76,6 +77,35 @@ export function uriToPath(uri: string): string {
   filePath = decodeURIComponent(filePath);
 
   // Normalize the path
+  return path.normalize(filePath);
+}
+
+/**
+ * Convert an absolute local file URI at a trust boundary.
+ *
+ * Unlike uriToPath(), this rejects authorities other than localhost, URI
+ * decorations, malformed escapes, and non-absolute results before returning a
+ * filesystem path. Callers must still perform their own containment check.
+ */
+export function strictFileUriToPath(uri: string): string {
+  const parsed = new URL(uri);
+  if (
+    parsed.protocol !== 'file:' ||
+    (parsed.hostname !== '' && parsed.hostname !== 'localhost') ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.port !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    throw new Error(`URI is not an undecorated local file URI: ${uri}`);
+  }
+
+  const filePath = fileURLToPath(parsed);
+  if (!path.isAbsolute(filePath) || filePath.includes('\0')) {
+    throw new Error(`File URI does not resolve to an absolute local path: ${uri}`);
+  }
+
   return path.normalize(filePath);
 }
 

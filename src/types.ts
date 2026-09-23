@@ -111,12 +111,24 @@ export interface LSPServerConfig {
   /** Initialization options to pass to the server */
   initializationOptions?: Record<string, unknown>;
 
+  /**
+   * LSP settings keyed by exact, absolute workspace root.
+   *
+   * The selected settings are exposed through workspace/configuration after
+   * the language server has initialized.
+   */
+  workspaceConfigurations?: WorkspaceConfigurationMap;
+
   /** Patterns to identify project root (e.g., ["package.json", "tsconfig.json"]) */
   rootPatterns?: string[];
 
   /** Per-server timeout for LSP requests (ms). Overrides global requestTimeout. */
   requestTimeout?: number;
 }
+
+export type WorkspaceSettings = Record<string, unknown>;
+
+export type WorkspaceConfigurationMap = Record<string, WorkspaceSettings>;
 
 export interface Config {
   /** Configured language servers */
