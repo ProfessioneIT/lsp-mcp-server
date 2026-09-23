@@ -101,22 +101,32 @@ cd jls && ./scripts/build.sh
 
 ### Install lsp-mcp-server
 
+**From npm:**
+
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd lsp-mcp-server
-
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Verify installation
-node dist/index.js --help
+npm install -g lsp-mcp-server
 ```
 
-### Global Installation (Optional)
+This puts an `lsp-mcp-server` command on your PATH. You can also skip the install and run it with `npx -y lsp-mcp-server`.
+
+**From source:**
+
+```bash
+# Clone the repository
+git clone https://github.com/ProfessioneIT/lsp-mcp-server.git
+cd lsp-mcp-server
+
+# Install dependencies (the prepare script also builds dist/)
+npm install
+
+# Rebuild after local changes
+npm run build
+
+# Verify installation: logs "LSP-MCP server running on stdio" to stderr, Ctrl+C to stop
+node dist/index.js
+```
+
+### Global Installation from Source (Optional)
 
 ```bash
 # Link globally for easy access
@@ -148,13 +158,26 @@ Create or edit the `.mcp.json` file in your home directory:
 }
 ```
 
-**Or if installed globally via npm link:**
+**Or if installed globally with `npm install -g` or `npm link`:**
 
 ```json
 {
   "mcpServers": {
     "lsp": {
       "command": "lsp-mcp-server"
+    }
+  }
+}
+```
+
+**Or run the published package through npx without installing:**
+
+```json
+{
+  "mcpServers": {
+    "lsp": {
+      "command": "npx",
+      "args": ["-y", "lsp-mcp-server"]
     }
   }
 }
@@ -378,6 +401,21 @@ Output:
 
 **Example prompt:** "Find all implementations of the interface at line 10 in /project/src/types.ts"
 
+#### `lsp_document_highlights`
+Find every occurrence of the symbol at a position within the same file, classified as read, write or plain text. Cheaper than `lsp_find_references` when you only care about one file.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - line: Line number (1-indexed)
+  - column: Column number (1-indexed)
+
+Output:
+  - highlights: Array of occurrences with range, kind ('text', 'read', or 'write'), and context
+```
+
+**Example prompt:** "Where is the variable at line 12 in /project/src/cart.ts written to within that file?"
+
 ### Information Tools
 
 #### `lsp_hover`
@@ -412,6 +450,25 @@ Output:
 ```
 
 **Example prompt:** "What are the parameters for the function call at line 30 in /project/src/api.ts?"
+
+#### `lsp_inlay_hints`
+Get the inferred types and parameter names the language server would show inline over a range. Keep the range small, such as one function.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - start_line: Start line (1-indexed)
+  - start_column: Start column (1-indexed)
+  - end_line: End line (1-indexed)
+  - end_column: End column (1-indexed)
+  - limit: Maximum hints (default: 100, max: 500)
+
+Output:
+  - hints: Array of hints with line, column, label, kind ('type' or 'parameter'), and optional tooltip and padding flags
+  - range: The range that was queried
+```
+
+**Example prompt:** "Show the inferred types inside the function between lines 40 and 60 in /project/src/parser.ts"
 
 ### Symbol Tools
 
@@ -468,6 +525,37 @@ Output:
 ```
 
 **Example prompt:** "Find the UserService class and show me all its references"
+
+### Structure Tools
+
+#### `lsp_selection_range`
+Get the chain of semantic ranges enclosing a position: the expression, then its statement, then its block, up to the whole file. Useful for choosing the right range to pass to `lsp_code_actions`.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - line: Line number (1-indexed)
+  - column: Column number (1-indexed)
+
+Output:
+  - ranges: Innermost-to-outermost array of ranges, each with range and context (first line of the range)
+```
+
+**Example prompt:** "What are the enclosing statement and block of the expression at line 25, column 18 in /project/src/app.ts?"
+
+#### `lsp_folding_ranges`
+Get the foldable regions of a file, such as functions, classes, blocks, imports and comments. Useful as a quick structural overview before reading specific sections.
+
+```
+Input:
+  - file_path: Absolute path to the source file
+  - kind_filter: 'all', 'comment', 'imports', or 'region' (default: 'all')
+
+Output:
+  - ranges: Array of regions with start_line, end_line, and optional start_column, end_column, kind, and collapsed_text
+```
+
+**Example prompt:** "Show me the foldable regions of /project/src/server.ts"
 
 ### File Analysis Tools
 
@@ -556,6 +644,22 @@ Output:
 ```
 
 **Example prompt:** "Show me all errors across the entire project"
+
+#### `lsp_index_files`
+Open a batch of files so their language servers start publishing diagnostics. Run it before `lsp_workspace_diagnostics`, which only sees opened files, and before `lsp_related_files` with `imported_by`. Pass a targeted set rather than the whole workspace.
+
+```
+Input:
+  - files: Array of absolute file paths (1 to 200)
+
+Output:
+  - opened: Files that were opened
+  - failed: Files that could not be opened, each with file and error
+  - opened_count: Number of files opened
+  - failed_count: Number of failures
+```
+
+**Example prompt:** "Index every file under /project/src/services, then show me all workspace errors"
 
 ### Completion Tools
 
@@ -759,13 +863,13 @@ The following languages are supported out of the box:
 | Language | Server | Command | File Extensions | Root Patterns |
 |----------|--------|---------|-----------------|---------------|
 | **TypeScript/JavaScript** | typescript-language-server | `typescript-language-server --stdio` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` | `tsconfig.json`, `jsconfig.json`, `package.json` |
-| **Python** | pylsp | `pylsp` | `.py`, `.pyi` | `pyproject.toml`, `setup.py`, `requirements.txt`, `Pipfile` |
+| **Python** | pylsp | `pylsp` | `.py`, `.pyi` | `pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`, `Pipfile` |
 | **Rust** | rust-analyzer | `rust-analyzer` | `.rs` | `Cargo.toml` |
 | **Go** | gopls | `gopls serve` | `.go` | `go.mod`, `go.work` |
-| **C/C++** | clangd | `clangd --background-index` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx` | `compile_commands.json`, `CMakeLists.txt`, `Makefile` |
+| **C/C++** | clangd | `clangd --background-index` | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.hh`, `.cxx`, `.hxx`, `.c++`, `.h++` | `compile_commands.json`, `CMakeLists.txt`, `Makefile`, `.clangd` |
 | **Ruby** | solargraph | `solargraph stdio` | `.rb`, `.rake`, `.gemspec` | `Gemfile`, `.ruby-version`, `Rakefile` |
-| **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml` | `composer.json`, `index.php` |
-| **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex` | `mix.exs`, `.formatter.exs` |
+| **PHP** | intelephense | `intelephense --stdio` | `.php`, `.phtml`, `.php3`, `.php4`, `.php5`, `.phps` | `composer.json`, `index.php`, `.php-version` |
+| **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex`, `.sface` | `mix.exs`, `.formatter.exs` |
 | **Kotlin** | kotlin-lsp | `kotlin-lsp` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
 | **Java** | jls | `jls` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `BUILD`, `.classpath` |
 
@@ -782,7 +886,7 @@ Create a configuration file at one of these locations (in order of priority):
 3. `~/.config/lsp-mcp/config.json` (XDG config)
 4. `~/.lsp-mcp.json` (home directory)
 
-Or set `LSP_CONFIG_PATH` environment variable to specify a custom path.
+The first file found is used. `~/.config` follows `$XDG_CONFIG_HOME` when it is set. Servers you define replace the built-in server with the same `id`, and new ids are added alongside the built-ins.
 
 **Example configuration:**
 
@@ -882,13 +986,19 @@ Each server in the `servers` array has:
 | `initializationOptions` | object | No | LSP initialization options |
 | `rootPatterns` | string[] | No | Files/dirs that indicate project root |
 
+Each language server process is started with the detected workspace root as its working directory. Servers that look up project settings from their working directory, such as a `.venv`, `pyproject.toml` or `go.mod`, therefore see the project's files rather than the directory lsp-mcp-server was launched from. A relative `command` path is also resolved against the workspace root.
+
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `LSP_LOG_LEVEL` | Override log level (debug, info, warn, error) |
-| `LSP_CONFIG_PATH` | Path to configuration file |
-| `LSP_WORKSPACE_ROOT` | Override workspace root detection |
+| `LSP_REQUEST_TIMEOUT` | Override the request timeout in milliseconds |
+| `LSP_WORKSPACE_ROOT` | Workspace root to use when no server `rootPatterns` match |
+
+Environment variables take precedence over the configuration file. The older names `LSP_MCP_LOG_LEVEL` and `LSP_MCP_REQUEST_TIMEOUT` are still accepted.
+
+Workspace roots are detected per file. The nearest parent directory containing one of the server's `rootPatterns` is used first. Only if none is found does `LSP_WORKSPACE_ROOT` apply, and after that the outermost directory containing a generic marker such as `.git` or `package.json`.
 
 ## Security Features
 
