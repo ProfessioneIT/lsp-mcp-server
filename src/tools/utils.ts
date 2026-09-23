@@ -27,7 +27,7 @@ import { LSPError, LSPErrorCode } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { uriToPath, readFile, pathToUri, ensureAbsolute } from '../utils/uri.js';
 import { fromLspRange, getLineContent, toLspPosition } from '../utils/position.js';
-import { SYMBOL_KIND_NAMES, COMPLETION_KIND_NAMES, DIAGNOSTIC_SEVERITY_NAMES } from '../constants.js';
+import { SYMBOL_KIND_NAMES, COMPLETION_KIND_NAMES, DIAGNOSTIC_SEVERITY_NAMES, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS } from '../constants.js';
 import { getToolContext } from './context.js';
 
 /**
@@ -57,8 +57,16 @@ export async function prepareFile(filePath: string): Promise<{
   // Get the client for this file
   const client = await ctx.connectionManager.getClientForFile(absolutePath);
 
-  // Ensure document is open
+  // Ensure document is open. Opening a document can make the server start
+  // work such as loading the project; until that finishes, cross-file results
+  // (references, rename, call hierarchy) can be silently incomplete. Wait for
+  // work the open triggered, as reported through work-done progress.
+  const wasOpen = ctx.documentManager.isOpen(uri, client);
+  const openedAt = Date.now();
   await ctx.documentManager.ensureOpen(uri, client);
+  if (!wasOpen) {
+    await client.waitForServerWork(openedAt, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS);
+  }
 
   // Get content for position conversion
   const content = ctx.documentManager.getContent(uri) ?? await readFile(absolutePath);

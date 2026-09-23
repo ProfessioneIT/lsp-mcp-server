@@ -1167,6 +1167,17 @@ npm install -g typescript-language-server typescript
 2. Wait a moment for the server to analyze
 3. Try again
 
+### Server Fails to Start
+
+**Issue:** `SERVER_START_FAILED` or `SERVER_TIMEOUT` when a tool first touches a language
+
+**Explanation:** `SERVER_START_FAILED` means the server process exited during startup; lsp-mcp-server retries a few times before reporting it. `SERVER_TIMEOUT` means the server never answered the LSP `initialize` request within `requestTimeout`, which usually means it is not speaking LSP over stdio.
+
+**Solution:**
+1. Run the configured command yourself and check that it starts without errors.
+2. Check that the arguments select stdio mode, e.g. `--stdio` for kotlin-lsp and typescript-language-server.
+3. For JVM-based servers, check the Java version (see [Running a Server on a Specific JDK](#running-a-server-on-a-specific-jdk)).
+
 ### Server Crashes Repeatedly
 
 **Issue:** Server keeps crashing and restarting
@@ -1271,6 +1282,7 @@ When a file is deleted or renamed, its cached diagnostics are dropped the next t
 - Servers start automatically when needed (if `autoStart: true`)
 - Crashed servers restart with exponential backoff (max 3 attempts in 5 minutes)
 - Idle servers shut down after the configured timeout
+- The first time a file is opened, lsp-mcp-server waits for work the server reports through LSP progress, such as TypeScript loading its project, so cross-file results like references and renames are complete. This adds at least 300 ms to the first call per file and at most 15 seconds.
 
 ## Version
 

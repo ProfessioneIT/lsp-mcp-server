@@ -235,8 +235,10 @@ export class ConnectionManagerImpl implements IConnectionManager {
       instance.status = 'crashed';
       instance.lastError = error instanceof Error ? error.message : String(error);
 
-      // Try to restart if appropriate
-      if (this.shouldRestart(key)) {
+      // Try to restart if appropriate. A server that did not answer initialize
+      // in time is not retried: each attempt would wait the full timeout again.
+      const timedOut = error instanceof LSPError && error.code === LSPErrorCode.SERVER_TIMEOUT;
+      if (!timedOut && this.shouldRestart(key)) {
         logger.warn(`Attempting to restart server: ${serverId}`, { error });
         return this.restartServer(key, serverConfig, workspaceRoot);
       }
