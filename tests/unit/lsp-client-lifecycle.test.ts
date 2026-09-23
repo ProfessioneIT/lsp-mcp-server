@@ -108,4 +108,29 @@ describe('LSPClientImpl lifecycle', () => {
     expect(Date.now() - started).toBeLessThan(2000);
     await manager.shutdownAll();
   });
+
+  it('waits for diagnostics published after a change', async () => {
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true', FIXTURE_DIAG_DELAY_MS: '400' });
+    await client.initialize(os.tmpdir());
+    const uri = 'file:///tmp/project/a.fixture';
+    const openedAt = Date.now();
+    client.didOpen({ uri, languageId: 'fixture', version: 1, text: 'first' });
+    expect(await client.waitForDiagnostics(uri, openedAt, 3000)).toBe(true);
+    expect(client.getCachedDiagnostics(uri)[0]!.message).toBe('first');
+
+    const changedAt = Date.now();
+    client.didChange(uri, 2, [{ text: 'second' }]);
+    expect(await client.waitForDiagnostics(uri, changedAt, 3000)).toBe(true);
+    expect(client.getCachedDiagnostics(uri)[0]!.message).toBe('second');
+  });
+
+  it('gives up waiting for diagnostics after the limit', async () => {
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true' });
+    await client.initialize(os.tmpdir());
+    const uri = 'file:///tmp/project/a.fixture';
+    const since = Date.now();
+    client.didOpen({ uri, languageId: 'fixture', version: 1, text: 'x' });
+    expect(await client.waitForDiagnostics(uri, since, 300)).toBe(false);
+    expect(Date.now() - since).toBeLessThan(1000);
+  });
 });

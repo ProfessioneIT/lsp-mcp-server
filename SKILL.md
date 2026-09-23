@@ -13,7 +13,7 @@ This MCP server exposes a Language Server (LSP) to you as 29 tools. LSP servers 
 2. **Plain text search is still right** for strings, comments, config files, docs, log lines, and matching across non-code files.
 3. **All file paths must be absolute.** Relative paths are rejected by Zod validation.
 4. **All line / column numbers are 1-indexed** (what an editor shows). Internal conversion to LSP 0-indexed happens for you.
-5. **First-touch wakes the server.** Auto-start is on by default — you do not need `lsp_start_server`. The first tool call that takes a `file_path` will spawn the right language server and open the file. There is no need to ping `lsp_server_status` before each call.
+5. **First-touch wakes the server.** Auto-start is on by default — you do not need `lsp_start_server`. The first tool call that takes a `file_path` will spawn the right language server and open the file. There is no need to ping `lsp_server_status` before each call. The first call that opens a file can take a little longer: it waits for work the server starts right after the open, such as TypeScript loading its project (up to 15 s), so cross-file results like references and rename are complete.
 6. **Position points at the symbol, not whitespace.** When you pass `line`/`column`, point at any character of the identifier itself. Pointing at a space, the `(` after a function name, or a comma will give empty or surprising results.
 
 ## Decision tree: pick the right tool
@@ -97,21 +97,16 @@ If you don't know the position, chain via `lsp_find_symbol` with `include: ["def
 Read the returned `changes` map. If correct, call again with `dry_run: false`.
 
 ### D. "Did my edit break anything?"
-Diagnostics are **push-based**. The server emits them after a file is opened or changed. To get them:
+Call `lsp_diagnostics` on the file, even right after editing it with `Edit`, `Write`, or a formatter. Every LSP tool call re-reads a file that is already open and, if it changed on disk, sends the new content to the server. When the call opened the file or sent new content, `lsp_diagnostics` waits up to 3 seconds for the server to publish fresh diagnostics, so you do not need to touch the file first or retry.
 
-1. Touch the file with any LSP tool that takes `file_path` (this opens it).
-2. Call `lsp_diagnostics` on that file.
-
-If you just wrote to the file via the regular `Edit` tool, the server still has the **old** content cached. Re-touching it with `lsp_diagnostics` is enough to trigger re-analysis in most servers, but for tightly-coupled type errors a brief moment may be required.
-
-**For a project-wide scan**, warm up the relevant files first:
+**For a project-wide scan**, open or refresh the relevant files first:
 
 ```json
 { "tool": "lsp_index_files",
   "input": { "files": ["/abs/a.ts", "/abs/b.ts", "/abs/c.ts"] } }
 ```
 
-Then call `lsp_workspace_diagnostics`. Without the warm-up the workspace view is empty — it only sees opened files.
+Then call `lsp_workspace_diagnostics`. Without the warm-up the workspace view is empty — it only sees opened files. `lsp_index_files` also sends the current content of files you edited since they were opened; servers may take a moment to re-publish, so if a file you just fixed still shows old errors, call `lsp_diagnostics` on it. Diagnostics of files that were deleted or renamed are dropped automatically.
 
 ### E. "What does this file expose?"
 For a quick public-API view, prefer `lsp_file_exports` over reading the whole file:
@@ -171,7 +166,7 @@ Each highlight has `kind: "read" | "write" | "text"`. Faster and more focused th
 ## Gotchas — read before you use these tools
 
 1. **`lsp_workspace_diagnostics` only reflects opened files.**
-   It does NOT scan unopened files. Use `lsp_index_files(files=[...])` to open a targeted batch first, then call `lsp_workspace_diagnostics`. If results look empty, suspect a missing warm-up step before suspecting "no errors".
+   It does NOT scan unopened files. Use `lsp_index_files(files=[...])` to open a targeted batch first, then call `lsp_workspace_diagnostics`. If results look empty, suspect a missing warm-up step before suspecting "no errors". Files edited since they were opened are refreshed when a tool (such as `lsp_index_files`) touches them.
 
 2. **`lsp_related_files` `imported_by` only sees files already opened this session.**
    It is regex-based and limited to JS/TS-shaped import syntax. For other languages or for "everything that imports X", do `lsp_find_references` on the export instead — that uses the real LSP index and is language-correct. (Or `lsp_index_files` the candidate set first.)
@@ -186,13 +181,13 @@ Each highlight has `kind: "read" | "write" | "text"`. Faster and more focused th
    `typescript-language-server` requires at least 1-2 characters and supports fuzzy matching well. `gopls` and `clangd` are more exact-match oriented. If a search returns nothing, try a longer / shorter query, then fall back to `lsp_document_symbols` on a likely file.
 
 6. **Symbol kind names are LSP-standard, capitalised.**
-   `Class`, `Function`, `Method`, `Interface`, `Variable`, `Property`, `Field`, `Enum`, `EnumMember`, `Constructor`, `Constant`, `Module`, `Namespace`, `Struct`, `TypeParameter`. Lowercase will silently match nothing.
+   `Class`, `Function`, `Method`, `Interface`, `Variable`, `Property`, `Field`, `Enum`, `EnumMember`, `Constructor`, `Constant`, `Module`, `Namespace`, `Struct`, `TypeParameter`. Any other spelling, including lowercase, is rejected with `INVALID_INPUT`.
 
 7. **You usually don't need `lsp_start_server` or `lsp_stop_server`.**
    Auto-start fires on first file touch. Idle servers shut themselves down after 30 minutes. Only call these tools if you specifically need to reset or stop a misbehaving server.
 
-8. **`lsp_format_document` and `lsp_rename` write files when `apply: true`.**
-   They are sandboxed to the detected workspace root, but they are still file writes. Preview with `apply: false` / `dry_run: true` first.
+8. **Three tools can write files.**
+   `lsp_rename` writes when `dry_run: false`; `lsp_format_document` and `lsp_code_actions` write when `apply: true`. Writes are restricted to the detected workspace root, but they are still file writes, so preview first. Edits that would also create, rename, or delete files are refused with `CAPABILITY_NOT_SUPPORTED` (a rename dry run lists them in `note`), and so are code actions that only carry an editor command.
 
 ## Output shape — what to expect
 
@@ -204,16 +199,21 @@ Errors return:
 ```
 Common codes:
 - `SERVER_NOT_FOUND` — language server binary not installed; the `suggestion` field has the install command.
+- `SERVER_START_FAILED` — the server process exited while starting (wrong command, arguments, or runtime version). It was already retried a few times.
+- `SERVER_TIMEOUT` — the server didn't answer in time. At startup this usually means it is not speaking LSP over stdio (e.g. a missing `--stdio` flag). Otherwise try again; large workspaces (clangd, jls, gopls cold-start) can take 30s+ on first request.
 - `UNSUPPORTED_LANGUAGE` — no server config for this extension.
-- `CAPABILITY_NOT_SUPPORTED` — the language server cannot do this operation (e.g., call hierarchy on a variable, or rename on a literal).
-- `RENAME_NOT_ALLOWED` — `lsp_rename` was called on a non-renameable position.
-- `INVALID_POSITION` — line/column outside the file or in an invalid spot.
-- `SERVER_TIMEOUT` — the LSP didn't respond. Try again; large workspaces (clangd, jls, gopls cold-start) can take 30s+ on first request.
+- `FILE_NOT_FOUND` — the file does not exist, e.g. it was deleted or renamed. Any cached state for it is discarded.
+- `CAPABILITY_NOT_SUPPORTED` — the operation cannot be done here: e.g. call hierarchy on a variable, or applying an edit that needs file operations or an editor command.
+- `RENAME_NOT_ALLOWED` — the language server rejected the position for renaming.
+- `INVALID_INPUT` — parameters failed validation (relative path, unknown kind, limit out of range); `details` lists the problems.
+- `INVALID_POSITION` — `action_index` is out of range in `lsp_code_actions`.
+- `INTERNAL_ERROR` — anything else, including errors reported by the language server itself, whose message is passed through (e.g. "You cannot rename elements that are defined in the standard TypeScript library").
 
 ## Server lifecycle quick facts
 
 - Each `(serverId, workspaceRoot)` pair gets its own server instance — monorepos work correctly.
-- Workspace root is auto-detected by walking up looking for `package.json`, `tsconfig.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `.git`, etc. Override via `LSP_WORKSPACE_ROOT`.
+- Workspace root is detected per file from the language's root markers, highest priority first (e.g. `tsconfig.json` then `package.json` for TypeScript; `compile_commands.json` before `CMakeLists.txt` for C/C++). `LSP_WORKSPACE_ROOT` only applies when no marker is found.
+- A server that cannot start reports `SERVER_START_FAILED` or `SERVER_TIMEOUT` instead of hanging.
 - Servers crash-restart with exponential backoff, max 3 attempts in 5 minutes.
 - Files larger than 10 MB are rejected.
 

@@ -26,6 +26,7 @@ import { prepareFile, getDiagnosticSeverityName, getDiagnosticMessageText, forge
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile } from '../utils/uri.js';
 import { getToolContext } from './context.js';
+import { DIAGNOSTICS_WAIT_MS } from '../constants.js';
 
 const SEVERITY_ORDER = { error: 1, warning: 2, info: 3, hint: 4 };
 
@@ -37,7 +38,13 @@ export async function handleDiagnostics(
 ): Promise<DiagnosticsResponse> {
   const { file_path, severity_filter } = input;
 
-  const { client, uri, content } = await prepareFile(file_path);
+  const { client, uri, content, touchedAt } = await prepareFile(file_path);
+
+  // If this call opened the file or sent the server new content, the cached
+  // diagnostics are missing or stale: wait for the server to publish fresh ones.
+  if (touchedAt !== null) {
+    await client.waitForDiagnostics(uri, touchedAt, DIAGNOSTICS_WAIT_MS);
+  }
 
   // Get cached diagnostics
   const diagnostics = client.getCachedDiagnostics(uri);
@@ -93,7 +100,7 @@ export async function handleDiagnostics(
   return {
     diagnostics: results,
     summary: { errors, warnings, info, hints },
-    note: 'Diagnostics are cached from language server notifications. If file was recently modified, re-open it to refresh.',
+    note: 'Diagnostics are cached from language server notifications. Edits made on disk are sent to the server on every call; after an open or a change this call waits briefly for fresh diagnostics.',
   };
 }
 

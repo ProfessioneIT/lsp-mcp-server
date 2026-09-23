@@ -166,6 +166,10 @@ export interface LSPClient {
   didOpen(document: TextDocumentItem): void;
   didChange(uri: string, version: number, changes: TextDocumentContentChangeEvent[]): void;
   didClose(uri: string): void;
+  /** Notify the server that a document was saved (its content matches the file on disk) */
+  didSave(uri: string): void;
+  /** Wait until diagnostics for `uri` are published at or after `since`; false after `maxMs` */
+  waitForDiagnostics(uri: string, since: number, maxMs: number): Promise<boolean>;
 
   /**
    * Wait until work the server started at or after `since` (epoch ms) has
@@ -297,6 +301,12 @@ export interface DocumentManager {
 
   /** Check if document is open with a specific client */
   isOpen(uri: string, client: LSPClient): boolean;
+
+  /**
+   * If the document is open in this client instance and the file on disk
+   * changed, send the new content (didChange + didSave). Returns true if it did.
+   */
+  syncWithDisk(uri: string, client: LSPClient): Promise<boolean>;
 
   /** List the documents open in a specific client instance */
   getOpenUris(client: LSPClient): string[];

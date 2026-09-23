@@ -37,6 +37,8 @@ export async function prepareFile(filePath: string): Promise<{
   client: LSPClient;
   uri: string;
   content: string;
+  /** When this call opened the document or sent it changed content, else null */
+  touchedAt: number | null;
 }> {
   const ctx = getToolContext();
   const absolutePath = ensureAbsolute(filePath);
@@ -62,16 +64,23 @@ export async function prepareFile(filePath: string): Promise<{
   // (references, rename, call hierarchy) can be silently incomplete. Wait for
   // work the open triggered, as reported through work-done progress.
   const wasOpen = ctx.documentManager.isOpen(uri, client);
-  const openedAt = Date.now();
-  await ctx.documentManager.ensureOpen(uri, client);
-  if (!wasOpen) {
-    await client.waitForServerWork(openedAt, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS);
+  const startedAt = Date.now();
+  let touchedAt: number | null = null;
+  if (wasOpen) {
+    // The file may have been edited on disk since it was opened
+    if (await ctx.documentManager.syncWithDisk(uri, client)) {
+      touchedAt = startedAt;
+    }
+  } else {
+    await ctx.documentManager.ensureOpen(uri, client);
+    touchedAt = startedAt;
+    await client.waitForServerWork(startedAt, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS);
   }
 
   // Get content for position conversion
   const content = ctx.documentManager.getContent(uri) ?? await readFile(absolutePath);
 
-  return { client, uri, content };
+  return { client, uri, content, touchedAt };
 }
 
 /**
