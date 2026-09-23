@@ -20,13 +20,14 @@
  * SOFTWARE.
  */
 
-import type { TextEdit, WorkspaceEdit } from 'vscode-languageserver-protocol';
+import type { TextEdit } from 'vscode-languageserver-protocol';
 import type { RenameInput } from '../schemas/tool-schemas.js';
 import type { RenameResponse, RenameEdit } from '../types.js';
 import { prepareFile, toPosition } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
 import * as fs from 'fs/promises';
+import { collectTextEdits } from '../utils/workspace-edit.js';
 import type { ServerCapabilities } from 'vscode-languageserver-protocol';
 import { LSPError, LSPErrorCode } from '../types.js';
 
@@ -254,38 +255,4 @@ function supportsPrepareRename(capabilities: ServerCapabilities): boolean {
 
 function isMethodNotFound(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === METHOD_NOT_FOUND;
-}
-
-/**
- * Collect text edits from a WorkspaceEdit, whether the server used `changes`
- * or `documentChanges` (e.g. pylsp). File create/rename/delete operations in
- * documentChanges are counted but not collected.
- */
-function collectTextEdits(workspaceEdit: WorkspaceEdit | null): {
-  editsByUri: Record<string, TextEdit[]>;
-  fileOperations: number;
-} {
-  const editsByUri: Record<string, TextEdit[]> = {};
-  let fileOperations = 0;
-
-  if (!workspaceEdit) {
-    return { editsByUri, fileOperations };
-  }
-
-  for (const [fileUri, edits] of Object.entries(workspaceEdit.changes ?? {})) {
-    (editsByUri[fileUri] ??= []).push(...edits);
-  }
-
-  for (const change of workspaceEdit.documentChanges ?? []) {
-    if ('textDocument' in change) {
-      const edits = change.edits.map((e): TextEdit =>
-        'newText' in e ? e : { range: e.range, newText: e.snippet.value }
-      );
-      (editsByUri[change.textDocument.uri] ??= []).push(...edits);
-    } else {
-      fileOperations++;
-    }
-  }
-
-  return { editsByUri, fileOperations };
 }

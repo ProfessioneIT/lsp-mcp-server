@@ -52,6 +52,7 @@ describe('handleRename prepare step', () => {
       didOpen: vi.fn(),
       didClose: vi.fn(),
       didChange: vi.fn(),
+      waitForServerWork: vi.fn(async () => {}),
       prepareRename: vi.fn(prepareRename),
       rename: vi.fn(async () => renameResult()),
       workspaceRoot: dir,
