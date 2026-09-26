@@ -203,7 +203,7 @@ You should see a response showing the server is running.
 
 To make Claude Code consistently prefer LSP tools over alternatives like `Grep` and `Glob` for code navigation, add instructions to your global `~/.claude/CLAUDE.md` file:
 
-```markdown
+````markdown
 ## LSP Server - REQUIRED FIRST STEP
 
 **BEFORE any code analysis, navigation, or codebase exploration, you MUST:**
@@ -279,7 +279,7 @@ lsp_format_document        # Format code
 lsp_smart_search           # Combined: definition + refs + hover
 lsp_find_symbol            # Find symbol by name (optionally scoped to a file)
 ```
-```
+````
 
 This ensures Claude Code will:
 - Always start the LSP server before analyzing code
