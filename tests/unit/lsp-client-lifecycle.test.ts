@@ -133,4 +133,61 @@ describe('LSPClientImpl lifecycle', () => {
     expect(await client.waitForDiagnostics(uri, since, 300)).toBe(false);
     expect(Date.now() - since).toBeLessThan(1000);
   });
+
+  it('pulls diagnostics from servers that declare diagnosticProvider', async () => {
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true', FIXTURE_PULL: 'true' });
+    await client.initialize(os.tmpdir());
+    expect(client.supportsPullDiagnostics()).toBe(true);
+    const published: string[] = [];
+    client.onDiagnostics((_uri, diagnostics) => published.push(diagnostics.map((d) => d.message).join(',')));
+
+    const uri = 'file:///tmp/project/a.fixture';
+    client.didOpen({ uri, languageId: 'fixture', version: 1, text: 'first' });
+    const first = await client.pullDiagnostics(uri);
+    // The server only pushed an empty list
+    expect(client.hasPushedDiagnostics(uri)).toBe(false);
+    expect(first?.map((d) => d.message)).toEqual(['first']);
+    expect(client.getCachedDiagnostics(uri).map((d) => d.message)).toEqual(['first']);
+    expect(published).toContain('first');
+
+    // Unchanged document: the server answers 'unchanged', the client keeps the items
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const again = await client.pullDiagnostics(uri);
+    expect(again?.map((d) => d.message)).toEqual(['first']);
+    expect(client.getCachedDiagnostics(uri).map((d) => d.message)).toEqual(['first']);
+
+    client.didChange(uri, 2, [{ text: 'second' }]);
+    const second = await client.pullDiagnostics(uri);
+    expect(second?.map((d) => d.message)).toEqual(['second']);
+  });
+
+  it('does not pull diagnostics from servers without diagnosticProvider', async () => {
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true' });
+    await client.initialize(os.tmpdir());
+    expect(client.supportsPullDiagnostics()).toBe(false);
+    expect(await client.pullDiagnostics('file:///tmp/project/a.fixture')).toBeNull();
+  });
+
+  it('merges pushed and pulled diagnostics without duplicates', async () => {
+    // Like rust-analyzer: pull returns the server's own diagnostics, while
+    // others (e.g. cargo check) are still pushed.
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true', FIXTURE_PULL: 'true', FIXTURE_DIAG_DELAY_MS: '100', FIXTURE_PULL_PREFIX: 'native:' });
+    await client.initialize(os.tmpdir());
+    const uri = 'file:///tmp/project/a.fixture';
+    client.didOpen({ uri, languageId: 'fixture', version: 1, text: 'first' });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const merged = await client.pullDiagnostics(uri);
+    expect(merged?.map((d) => d.message).sort()).toEqual(['first', 'native:first']);
+    expect(client.hasPushedDiagnostics(uri)).toBe(true);
+    expect(client.getCachedDiagnostics(uri).map((d) => d.message).sort()).toEqual(['first', 'native:first']);
+  });
+
+  it('reports a diagnostic that is both pushed and pulled once', async () => {
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true', FIXTURE_PULL: 'true', FIXTURE_DIAG_DELAY_MS: '100' });
+    await client.initialize(os.tmpdir());
+    const uri = 'file:///tmp/project/a.fixture';
+    client.didOpen({ uri, languageId: 'fixture', version: 1, text: 'first' });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect((await client.pullDiagnostics(uri))?.map((d) => d.message)).toEqual(['first']);
+  });
 });

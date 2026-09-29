@@ -24,7 +24,7 @@ import type { CodeAction, Command, WorkspaceEdit, TextEdit, MarkupContent } from
 import type { CodeActionsInput } from '../schemas/tool-schemas.js';
 import type { CodeActionsResponse, CodeActionResult, DiagnosticResult } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
-import { prepareFile, toPosition, getDiagnosticSeverityName, getDiagnosticMessageText } from './utils.js';
+import { prepareFile, toPosition, getDiagnosticSeverityName, getDiagnosticMessageText, getCurrentDiagnostics } from './utils.js';
 import { clampToDocument, fromLspRange } from '../utils/position.js';
 import { uriToPath, readFile, validatePathWithinWorkspace } from '../utils/uri.js';
 import * as fs from 'fs/promises';
@@ -187,7 +187,7 @@ export async function handleCodeActions(
   };
 
   // Get diagnostics in range for context
-  const allDiagnostics = client.getCachedDiagnostics(uri);
+  const allDiagnostics = await getCurrentDiagnostics(client, uri, null);
   const diagnosticsInRange = allDiagnostics.filter(d => {
     const dStart = d.range.start;
     const dEnd = d.range.end;

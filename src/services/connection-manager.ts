@@ -29,6 +29,7 @@ import type {
   DiagnosticsCache,
 } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
+import { resolveServerConfig } from './typescript-server.js';
 import { LSPClientImpl, createLSPClient } from './lsp-client.js';
 import { logger } from '../utils/logger.js';
 import { getExtension, normalizePath } from '../utils/uri.js';
@@ -185,8 +186,8 @@ export class ConnectionManagerImpl implements IConnectionManager {
     workspaceRoot: string,
     key: string
   ): Promise<LSPClient> {
-    const serverConfig = this.config.servers.find(s => s.id === serverId);
-    if (!serverConfig) {
+    const configuredServer = this.config.servers.find(s => s.id === serverId);
+    if (!configuredServer) {
       throw new LSPError(
         LSPErrorCode.SERVER_NOT_FOUND,
         `No server configuration found for: ${serverId}`,
@@ -194,6 +195,9 @@ export class ConnectionManagerImpl implements IConnectionManager {
         { server_id: serverId }
       );
     }
+
+    // The concrete command can depend on the workspace (e.g. TypeScript 7)
+    const serverConfig = resolveServerConfig(configuredServer, workspaceRoot);
 
     // Create server instance record
     const instance: ServerInstance = {

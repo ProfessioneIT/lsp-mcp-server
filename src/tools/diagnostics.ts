@@ -22,11 +22,10 @@
 
 import type { DiagnosticsInput, WorkspaceDiagnosticsInput } from '../schemas/tool-schemas.js';
 import type { DiagnosticsResponse, DiagnosticResult, WorkspaceDiagnosticsResponse, WorkspaceDiagnosticItem } from '../types.js';
-import { prepareFile, getDiagnosticSeverityName, getDiagnosticMessageText, forgetDeletedFiles } from './utils.js';
+import { prepareFile, getDiagnosticSeverityName, getDiagnosticMessageText, forgetDeletedFiles, getCurrentDiagnostics, pullOpenDocumentDiagnostics } from './utils.js';
 import { fromLspRange, getLineContent } from '../utils/position.js';
 import { uriToPath, readFile } from '../utils/uri.js';
 import { getToolContext } from './context.js';
-import { DIAGNOSTICS_WAIT_MS } from '../constants.js';
 
 const SEVERITY_ORDER = { error: 1, warning: 2, info: 3, hint: 4 };
 
@@ -40,14 +39,9 @@ export async function handleDiagnostics(
 
   const { client, uri, content, touchedAt } = await prepareFile(file_path);
 
-  // If this call opened the file or sent the server new content, the cached
-  // diagnostics are missing or stale: wait for the server to publish fresh ones.
-  if (touchedAt !== null) {
-    await client.waitForDiagnostics(uri, touchedAt, DIAGNOSTICS_WAIT_MS);
-  }
-
-  // Get cached diagnostics
-  const diagnostics = client.getCachedDiagnostics(uri);
+  // Pull-model servers are asked directly. For push-model servers, if this call
+  // opened the file or sent it new content, wait briefly for a fresh publish.
+  const diagnostics = await getCurrentDiagnostics(client, uri, touchedAt);
 
   // Convert and filter
   const results: DiagnosticResult[] = [];
@@ -116,6 +110,10 @@ export async function handleWorkspaceDiagnostics(
 
   // Drop diagnostics for files deleted since they were reported
   await forgetDeletedFiles();
+
+  // Servers that only report diagnostics on request contribute nothing to the
+  // cache by themselves: ask them for every open document
+  await pullOpenDocumentDiagnostics();
 
   // Get all cached URIs
   const uris = ctx.diagnosticsCache.getUris();
