@@ -21,13 +21,13 @@
  */
 
 import * as fs from 'node:fs';
-import type { Location, LocationLink, MarkupContent } from 'vscode-languageserver-protocol';
+import type { Diagnostic, Location, LocationLink, MarkupContent } from 'vscode-languageserver-protocol';
 import type { LocationResult, LSPClient } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { uriToPath, readFile, pathToUri, ensureAbsolute } from '../utils/uri.js';
 import { fromLspRange, getLineContent, toLspPosition } from '../utils/position.js';
-import { SYMBOL_KIND_NAMES, COMPLETION_KIND_NAMES, DIAGNOSTIC_SEVERITY_NAMES, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS } from '../constants.js';
+import { SYMBOL_KIND_NAMES, COMPLETION_KIND_NAMES, DIAGNOSTIC_SEVERITY_NAMES, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS, DIAGNOSTICS_WAIT_MS } from '../constants.js';
 import { getToolContext } from './context.js';
 
 /**
@@ -81,6 +81,59 @@ export async function prepareFile(filePath: string): Promise<{
   const content = ctx.documentManager.getContent(uri) ?? await readFile(absolutePath);
 
   return { client, uri, content, touchedAt };
+}
+
+/**
+ * Get the current diagnostics for an open document.
+ *
+ * Servers that provide diagnostics on request (e.g. the TypeScript 7 native
+ * server, which only publishes empty lists, or rust-analyzer) are asked
+ * directly; the result also includes what they published, after waiting for
+ * a fresh publish if earlier published diagnostics may be stale. For push-model
+ * servers the cached diagnostics are used; when `waitSince` is set (the
+ * document was just opened or changed), first wait briefly for a fresh publish.
+ */
+export async function getCurrentDiagnostics(
+  client: LSPClient,
+  uri: string,
+  waitSince: number | null
+): Promise<Diagnostic[]> {
+  if (client.supportsPullDiagnostics()) {
+    // The pulled result also includes what the server pushed. Only wait for a
+    // fresh publish if the server pushed diagnostics for this document before,
+    // since those may be stale after a change (e.g. rust-analyzer's cargo check
+    // results). TypeScript 7 only pushes empty lists, so it is never waited on.
+    if (waitSince !== null && client.hasPushedDiagnostics(uri)) {
+      await client.waitForDiagnostics(uri, waitSince, DIAGNOSTICS_WAIT_MS);
+    }
+    const pulled = await client.pullDiagnostics(uri);
+    if (pulled) {
+      return pulled;
+    }
+  }
+  if (waitSince !== null) {
+    await client.waitForDiagnostics(uri, waitSince, DIAGNOSTICS_WAIT_MS);
+  }
+  return client.getCachedDiagnostics(uri);
+}
+
+/**
+ * Pull fresh diagnostics for every document open in a running server instance
+ * that provides diagnostics on request, so workspace-wide views are current.
+ */
+export async function pullOpenDocumentDiagnostics(): Promise<void> {
+  const ctx = getToolContext();
+  const pulls: Promise<unknown>[] = [];
+  for (const instance of ctx.connectionManager.listActiveServers()) {
+    const client = instance.client;
+    if (!client || !client.supportsPullDiagnostics()) {
+      continue;
+    }
+    for (const uri of ctx.documentManager.getOpenUris(client)) {
+      pulls.push(client.pullDiagnostics(uri));
+    }
+  }
+  await Promise.all(pulls);
 }
 
 /**

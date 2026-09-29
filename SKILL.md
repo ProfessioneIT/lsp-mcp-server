@@ -175,7 +175,7 @@ Each highlight has `kind: "read" | "write" | "text"`. Faster and more focused th
    It recognises `import …`, dynamic `import('…')`, and `require('…')`. It will not catch Python/Go/Rust import idioms accurately. For non-JS languages, `lsp_document_symbols` plus your own knowledge of the language is more reliable.
 
 4. **`lsp_call_hierarchy` / `lsp_type_hierarchy` need a callable / class-like position.**
-   Pointing at a variable will throw `CAPABILITY_NOT_SUPPORTED`. Point at the function name itself, or use `lsp_smart_search` which fails silently.
+   Pointing at a variable will throw `CAPABILITY_NOT_SUPPORTED`. Point at the function name itself, or use `lsp_smart_search` which fails silently. Some servers have no type hierarchy at all: for TypeScript, `lsp_type_hierarchy` always returns `CAPABILITY_NOT_SUPPORTED`, so use `lsp_find_implementations` or `lsp_find_references` on the class or interface instead.
 
 5. **`lsp_workspace_symbols` quality varies by language server.**
    `typescript-language-server` requires at least 1-2 characters and supports fuzzy matching well. `gopls` and `clangd` are more exact-match oriented. If a search returns nothing, try a longer / shorter query, then fall back to `lsp_document_symbols` on a likely file.
@@ -214,6 +214,7 @@ Common codes:
 - Each `(serverId, workspaceRoot)` pair gets its own server instance — monorepos work correctly.
 - Workspace root is detected per file from the language's root markers, highest priority first (e.g. `tsconfig.json` then `package.json` for TypeScript; `compile_commands.json` before `CMakeLists.txt` for C/C++). `LSP_WORKSPACE_ROOT` only applies when no marker is found.
 - A server that cannot start reports `SERVER_START_FAILED` or `SERVER_TIMEOUT` instead of hanging.
+- TypeScript 7 projects are handled automatically: when the project's own `typescript` package is version 7 or newer, its built-in language server (`tsc --lsp --stdio`) is used instead of typescript-language-server. Diagnostics work the same way from your side.
 - Servers crash-restart with exponential backoff, max 3 attempts in 5 minutes.
 - Files larger than 10 MB are rejected.
 

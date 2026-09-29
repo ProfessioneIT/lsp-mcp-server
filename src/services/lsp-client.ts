@@ -58,6 +58,9 @@ import {
   FoldingRangeRequest,
   DidDeleteFilesNotification,
   WorkDoneProgressCreateRequest,
+  DocumentDiagnosticRequest,
+  DiagnosticRefreshRequest,
+  type DocumentDiagnosticReport,
   type TextDocumentPositionParams,
   type ReferenceParams,
   type DocumentSymbolParams,
@@ -143,6 +146,9 @@ import {
   CancellationTokenSource,
 } from 'vscode-languageserver-protocol/node';
 
+/** JSON-RPC error code a server uses to ask the client to retry a request later */
+const SERVER_CANCELLED = -32802;
+
 type DiagnosticsHandler = (uri: string, diagnostics: Diagnostic[]) => void;
 type ErrorHandler = (error: Error) => void;
 type ExitHandler = (code: number | null) => void;
@@ -164,8 +170,12 @@ export class LSPClientImpl implements ILSPClient {
   private _nextRequestId = 1;
   /** Work-done progress tokens the server has open, with the time each started */
   private activeProgress = new Map<string | number, number>();
-  /** When diagnostics were last published for each URI */
+  /** When the server last published diagnostics for each URI (push model only) */
   private diagnosticsPublishedAt = new Map<string, number>();
+  /** Last published diagnostics per URI (push model) */
+  private pushedDiagnostics = new Map<string, Diagnostic[]>();
+  /** Last pulled diagnostics and their resultId, per URI (pull model) */
+  private pulledDiagnostics = new Map<string, { resultId: string | undefined; items: Diagnostic[] }>();
 
   constructor(
     private readonly config: LSPServerConfig,
@@ -232,6 +242,11 @@ export class LSPClientImpl implements ILSPClient {
     const writer = new StreamMessageWriter(this.process.stdin);
     this.connection = createMessageConnection(reader, writer) as MessageConnection;
     this.registerProgressTracking(this.connection);
+    this.connection.onRequest(DiagnosticRefreshRequest.type, () => {
+      // The server's diagnostics changed: forget resultIds so the next pull is a full one
+      this.pulledDiagnostics.clear();
+      return null;
+    });
 
     const workspaceSettings = getWorkspaceSettings(
       this.config.workspaceConfigurations,
@@ -478,6 +493,61 @@ export class LSPClientImpl implements ILSPClient {
     });
     // Clear cached diagnostics for this document
     this.diagnosticsCache.delete(uri);
+    this.pushedDiagnostics.delete(uri);
+    this.pulledDiagnostics.delete(uri);
+  }
+
+  /**
+   * Whether the server provides diagnostics on request (textDocument/diagnostic).
+   * Some servers, e.g. the TypeScript 7 native server, only report errors this way
+   * and publish empty diagnostics. The client does not advertise pull support, so
+   * servers that switch models based on it (e.g. pyright) keep pushing.
+   */
+  supportsPullDiagnostics(): boolean {
+    return this._capabilities.diagnosticProvider !== undefined;
+  }
+
+  /**
+   * Request diagnostics for a document from a pull-model server and store them
+   * like published ones. Returns null if the server does not support pulling or
+   * the request failed, so callers can fall back to cached diagnostics.
+   */
+  async pullDiagnostics(uri: string): Promise<Diagnostic[] | null> {
+    if (!this.supportsPullDiagnostics()) {
+      return null;
+    }
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const previous = this.pulledDiagnostics.get(uri);
+      try {
+        const report = await this.sendRequest<DocumentDiagnosticReport>(DocumentDiagnosticRequest.type, {
+          textDocument: { uri },
+          ...(previous?.resultId ? { previousResultId: previous.resultId } : {}),
+        });
+
+        // 'unchanged' means the items from the previous pull are still valid
+        const items = report.kind === 'unchanged' ? previous?.items ?? [] : report.items;
+        this.pulledDiagnostics.set(uri, { resultId: report.resultId, items });
+        const merged = this.mergedDiagnostics(uri);
+        this.storeDiagnostics(uri, merged);
+        return merged;
+      } catch (error) {
+        // ServerCancelled: the server asks to retry later (e.g. project still loading)
+        const code = (error as { code?: unknown } | null)?.code;
+        if (attempt === 0 && code === SERVER_CANCELLED) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
+        }
+        logger.debug(`Pulling diagnostics failed: ${uri}`, error);
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /** Whether the last diagnostics the server published for `uri` were non-empty */
+  hasPushedDiagnostics(uri: string): boolean {
+    return (this.pushedDiagnostics.get(uri)?.length ?? 0) > 0;
   }
 
   didSave(uri: string): void {
@@ -513,6 +583,8 @@ export class LSPClientImpl implements ILSPClient {
     });
     for (const uri of uris) {
       this.diagnosticsCache.delete(uri);
+      this.pushedDiagnostics.delete(uri);
+      this.pulledDiagnostics.delete(uri);
     }
   }
 
@@ -851,15 +923,9 @@ export class LSPClientImpl implements ILSPClient {
       PublishDiagnosticsNotification.type,
       (params: unknown) => {
         const p = params as { uri: string; diagnostics: Diagnostic[] };
-        this.diagnosticsCache.set(p.uri, p.diagnostics);
+        this.pushedDiagnostics.set(p.uri, p.diagnostics);
         this.diagnosticsPublishedAt.set(p.uri, Date.now());
-        for (const handler of this.diagnosticsHandlers) {
-          try {
-            handler(p.uri, p.diagnostics);
-          } catch (error) {
-            logger.error('Error in diagnostics handler', error);
-          }
-        }
+        this.storeDiagnostics(p.uri, this.mergedDiagnostics(p.uri));
       }
     );
 
@@ -1037,6 +1103,38 @@ export class LSPClientImpl implements ILSPClient {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     logger.debug(`Stopped waiting for server work after ${maxMs}ms: ${this.config.id}`);
+  }
+
+  /**
+   * The diagnostics for a URI from both models, without duplicates. Some servers
+   * use both: rust-analyzer returns its own diagnostics on request but still
+   * pushes cargo check results, while TypeScript 7 only pushes empty lists.
+   */
+  private mergedDiagnostics(uri: string): Diagnostic[] {
+    const merged: Diagnostic[] = [];
+    const seen = new Set<string>();
+    for (const diagnostic of [...(this.pushedDiagnostics.get(uri) ?? []), ...(this.pulledDiagnostics.get(uri)?.items ?? [])]) {
+      const key = JSON.stringify([diagnostic.range, diagnostic.severity, diagnostic.code, diagnostic.source, diagnostic.message]);
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(diagnostic);
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * Store the effective diagnostics for a URI and notify listeners.
+   */
+  private storeDiagnostics(uri: string, diagnostics: Diagnostic[]): void {
+    this.diagnosticsCache.set(uri, diagnostics);
+    for (const handler of this.diagnosticsHandlers) {
+      try {
+        handler(uri, diagnostics);
+      } catch (error) {
+        logger.error('Error in diagnostics handler', error);
+      }
+    }
   }
 
   private cleanup(): void {

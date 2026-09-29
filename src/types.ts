@@ -220,6 +220,12 @@ export interface LSPClient {
 
   // Diagnostics (from cache, populated by publishDiagnostics notifications)
   getCachedDiagnostics(uri: string): Diagnostic[];
+  /** Whether the server provides diagnostics on request (textDocument/diagnostic) */
+  supportsPullDiagnostics(): boolean;
+  /** Whether the last diagnostics the server published (pushed) for `uri` were non-empty */
+  hasPushedDiagnostics(uri: string): boolean;
+  /** Pull diagnostics for a document and store them; null if unsupported or failed */
+  pullDiagnostics(uri: string): Promise<Diagnostic[] | null>;
 
   // State
   readonly capabilities: ServerCapabilities;

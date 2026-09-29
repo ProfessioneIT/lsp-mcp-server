@@ -333,7 +333,7 @@ const TOOLS = [
   },
   {
     name: 'lsp_diagnostics',
-    description: 'Get compiler errors, warnings, and hints for a file. Use after making changes to check for type errors, missing imports, or other issues. Results are cached from language server notifications.',
+    description: 'Get compiler errors, warnings, and hints for a file. Use after making changes to check for type errors, missing imports, or other issues. Diagnostics come from the language server, published or, for servers such as TypeScript 7, requested.',
     inputSchema: {
       type: 'object',
       properties: {

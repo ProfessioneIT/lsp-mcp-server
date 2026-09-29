@@ -42,6 +42,8 @@ function fakeClient() {
     waitForServerWork: vi.fn(async () => {}),
     waitForDiagnostics: vi.fn(async () => true),
     getCachedDiagnostics: vi.fn(() => []),
+    supportsPullDiagnostics: () => false,
+    hasPushedDiagnostics: () => false,
   };
 }
 

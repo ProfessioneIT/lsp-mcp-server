@@ -58,8 +58,10 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 - **Language servers** for the languages you want to use:
 
 ```bash
-# TypeScript/JavaScript
+# TypeScript/JavaScript (TypeScript 6 and older)
 npm install -g typescript-language-server typescript
+# TypeScript 7 and newer need nothing extra: the language server built into
+# the project's typescript package is used automatically
 
 # Python
 pip install python-lsp-server
@@ -770,7 +772,7 @@ Output:
 **Example prompt:** "Show me all functions that call handleRequest at line 100 in /project/src/server.ts"
 
 #### `lsp_type_hierarchy`
-Get the type hierarchy for a class or interface - supertypes and subtypes.
+Get the type hierarchy for a class or interface - supertypes and subtypes. Not every language server supports it; the TypeScript servers, for example, do not.
 
 ```
 Input:
@@ -866,7 +868,7 @@ The following languages are supported out of the box:
 
 | Language | Server | Command | File Extensions | Root Patterns |
 |----------|--------|---------|-----------------|---------------|
-| **TypeScript/JavaScript** | typescript-language-server | `typescript-language-server --stdio` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` | `tsconfig.json`, `jsconfig.json`, `package.json` |
+| **TypeScript/JavaScript** | typescript-language-server, or the TypeScript 7 native server | `typescript-language-server --stdio`, or `tsc --lsp --stdio` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs` | `tsconfig.json`, `jsconfig.json`, `package.json` |
 | **Python** | pylsp | `pylsp` | `.py`, `.pyi` | `pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`, `Pipfile` |
 | **Rust** | rust-analyzer | `rust-analyzer` | `.rs` | `Cargo.toml` |
 | **Go** | gopls | `gopls serve` | `.go` | `go.mod`, `go.work` |
@@ -876,6 +878,8 @@ The following languages are supported out of the box:
 | **Elixir** | elixir-ls | `elixir-ls` | `.ex`, `.exs`, `.heex`, `.leex`, `.sface` | `mix.exs`, `.formatter.exs` |
 | **Kotlin** | kotlin-lsp | `kotlin-lsp --stdio` | `.kt`, `.kts` | `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts` |
 | **Java** | jls | `jls` | `.java` | `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`, `BUILD`, `.classpath` |
+
+**TypeScript 7.** TypeScript 7 no longer ships `tsserver`, which typescript-language-server needs. When a workspace's own `typescript` package is version 7 or newer, lsp-mcp-server starts that package's built-in language server with `tsc --lsp --stdio` instead. The package is looked up from the workspace root upward, so hoisted installs in monorepos are found too. Other workspaces keep using typescript-language-server, and a `typescript` server you define in your configuration always takes precedence. Neither TypeScript server supports `lsp_type_hierarchy`.
 
 You can add additional languages by providing a custom configuration (see [Configuration](#configuration)).
 
@@ -1267,13 +1271,15 @@ Server instances are keyed by `(serverId, workspaceRoot)` pairs. This means:
 
 ### Diagnostics Caching
 
-Unlike other LSP features that are request-based, diagnostics are push-based:
+Most language servers push diagnostics:
 
 1. Language servers send `publishDiagnostics` notifications
 2. lsp-mcp-server caches these in memory
 3. `lsp_diagnostics` and `lsp_workspace_diagnostics` tools read from the cache
 
 This means diagnostics are available immediately after files are opened, without an explicit request.
+
+Some servers also provide diagnostics on request (`textDocument/diagnostic`). The TypeScript 7 native server reports errors only this way. rust-analyzer returns its own diagnostics this way and still pushes `cargo check` results. For such servers, `lsp_diagnostics`, `lsp_workspace_diagnostics`, and `lsp_code_actions` request fresh diagnostics and combine them with the pushed ones.
 
 When a file is deleted or renamed, its cached diagnostics are dropped the next time `lsp_workspace_diagnostics` or `lsp_index_files` runs, or when a tool is called on the old path. The file is also closed in the language server, and servers that registered for `workspace/didDeleteFiles` are notified.
 

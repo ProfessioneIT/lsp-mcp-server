@@ -69,6 +69,8 @@ describe('range tools', () => {
       didChange: vi.fn(),
       waitForServerWork: vi.fn(async () => {}),
       getCachedDiagnostics: () => [],
+      supportsPullDiagnostics: () => false,
+    hasPushedDiagnostics: () => false,
       inlayHints: vi.fn(async () => []),
       codeActions: vi.fn(async () => []),
     };
