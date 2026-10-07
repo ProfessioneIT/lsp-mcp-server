@@ -1,11 +1,15 @@
 ---
 name: lsp-mcp-server
-description: Use whenever code navigation, analysis, refactoring, or diagnostics are needed on a project that has a Language Server Protocol implementation. Covers all 29 lsp_* MCP tools exposed by lsp-mcp-server (TypeScript, Python, Rust, Go, C/C++, Ruby, PHP, Elixir, Kotlin, Java, and any user-configured language). Use it instead of grep/find/Read for ANY task that touches definitions, references, types, hover docs, completions, diagnostics, rename, code actions, call/type hierarchy, document/workspace symbols, document highlights, inlay hints, selection ranges, folding ranges, or batch file indexing.
+description: Use with Codex, Claude Code, or another MCP client when lsp-mcp-server is connected and semantic code navigation, analysis, refactoring, or diagnostics are needed. Covers all 29 lsp_* tools for TypeScript, Python, Rust, Go, C/C++, Ruby, PHP, Elixir, Kotlin, Java, and user-configured languages. Prefer these tools to text search for definitions, references, types, diagnostics, rename, code actions, hierarchy, symbols, ranges, and indexing.
 ---
 
 # lsp-mcp-server — How to use it well
 
 This MCP server exposes a Language Server (LSP) to you as 29 tools. LSP servers maintain a real semantic model of the codebase: they know that `User` in file A is the same class imported under an alias in file B, that `db.query` returns `Promise<Row[]>`, and that renaming a private method touches 17 call sites in 9 files. **Plain text search cannot give you any of that.**
+
+## Client compatibility
+
+These workflows apply to Codex, Claude Code, and other MCP clients. Use the tool names exposed by your client's MCP catalog; a client may add a server namespace to the `lsp_*` names below. This skill supplements the connected MCP server; it does not register or start it. Use project builds and tests alongside LSP diagnostics when validating changes.
 
 ## Hard rules
 
@@ -97,7 +101,7 @@ If you don't know the position, chain via `lsp_find_symbol` with `include: ["def
 Read the returned `changes` map. If correct, call again with `dry_run: false`.
 
 ### D. "Did my edit break anything?"
-Call `lsp_diagnostics` on the file, even right after editing it with `Edit`, `Write`, or a formatter. Every LSP tool call re-reads a file that is already open and, if it changed on disk, sends the new content to the server. When the call opened the file or sent new content, `lsp_diagnostics` waits up to 3 seconds for the server to publish fresh diagnostics, so you do not need to touch the file first or retry.
+Call `lsp_diagnostics` on the file, even right after editing it with your client's editing tools or a formatter. Every LSP tool call re-reads a file that is already open and, if it changed on disk, sends the new content to the server. When the call opened the file or sent new content, `lsp_diagnostics` waits up to 3 seconds for the server to publish fresh diagnostics, so you do not need to touch the file first or retry.
 
 **For a project-wide scan**, open or refresh the relevant files first:
 

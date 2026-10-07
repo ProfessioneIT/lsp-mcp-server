@@ -1,10 +1,10 @@
 # lsp-mcp-server
 
-An MCP (Model Context Protocol) server that bridges Claude Code to Language Server Protocol (LSP) servers, enabling semantic code intelligence capabilities.
+An MCP (Model Context Protocol) server that bridges Codex, Claude Code, and other MCP clients to Language Server Protocol (LSP) servers, enabling semantic code intelligence capabilities.
 
 ## Overview
 
-**lsp-mcp-server** acts as a bridge between Claude Code and language servers, providing powerful code intelligence features:
+**lsp-mcp-server** acts as a bridge between MCP clients and language servers, providing powerful code intelligence features:
 
 - **Go to Definition** - Navigate to where symbols are defined
 - **Find References** - Find all usages of a symbol across the workspace
@@ -22,8 +22,8 @@ An MCP (Model Context Protocol) server that bridges Claude Code to Language Serv
 
 ```
 ┌─────────────┐      ┌──────────────────┐      ┌───────────────────┐
-│ Claude Code │────▶│  lsp-mcp-server  │────▶│ Language Servers  │
-│   (MCP)     │◀────│   (this tool)    │◀────│ (TypeScript, etc) │
+│ MCP client  │────▶│  lsp-mcp-server  │────▶│ Language Servers  │
+│ Codex/Claude│◀────│   (this tool)    │◀────│ (TypeScript, etc) │
 └─────────────┘      └──────────────────┘      └───────────────────┘
       stdio              stdio/JSON-RPC            stdio
 ```
@@ -140,6 +140,64 @@ npm link
 
 # Now you can run from anywhere
 lsp-mcp-server
+```
+
+## Configuration with Codex
+
+Codex CLI and the IDE extension can use this server directly over stdio. Install the language servers you need using the prerequisites above. No OpenAI API key or client-specific server mode is required by lsp-mcp-server.
+
+### Register the server
+
+When developing from this checkout, build and register the local executable:
+
+```bash
+npm run build
+codex mcp add lsp -- node "$(pwd)/dist/index.js"
+codex mcp get lsp
+```
+
+After a global npm installation, use `codex mcp add lsp -- lsp-mcp-server`. To run the published npm version without installing globally, use `codex mcp add lsp -- npx -y lsp-mcp-server`. Use the local executable when testing unpublished changes.
+
+Restart Codex or reload the IDE extension, then use `/mcp` to check the connection. Ask Codex to run `lsp_server_status` or query a source file with `lsp_hover`. File tools auto-start the appropriate language server by default; a status call is only needed for troubleshooting.
+
+### TOML configuration
+
+Alternatively, add the following to `~/.codex/config.toml`, or to `.codex/config.toml` in a trusted project. Replace the absolute paths with your checkout and target project:
+
+```toml
+[mcp_servers.lsp]
+command = "node"
+args = ["/absolute/path/to/lsp-mcp-server/dist/index.js"]
+cwd = "/absolute/path/to/your/project"
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+
+[mcp_servers.lsp.env]
+LSP_LOG_LEVEL = "info"
+```
+
+`cwd` selects the directory where `.lsp-mcp.json` is loaded. Language-server workspace roots are still detected from each source file. Keep custom language-server settings in `.lsp-mcp.json`; Codex's TOML config controls the MCP connection. The longer tool timeout accommodates language-server startup and initial project analysis. Ensure the language-server executables are available on Codex's `PATH`.
+
+See the [official Codex MCP documentation](https://developers.openai.com/codex/mcp/) for configuration details.
+
+### Optional Codex skill
+
+From this checkout, install the accompanying usage guide at the user level:
+
+```bash
+mkdir -p ~/.agents/skills/lsp-mcp-server
+cp SKILL.md ~/.agents/skills/lsp-mcp-server/SKILL.md
+```
+
+For one project, copy it into that project's `.agents/skills/lsp-mcp-server/SKILL.md` instead. The npm package also includes `SKILL.md`. Invoke it in Codex with `$lsp-mcp-server`; the MCP connection must already be configured. See the [official skills documentation](https://developers.openai.com/codex/skills/).
+
+For persistent project guidance, add these instructions to the target project's `AGENTS.md`:
+
+```markdown
+Prefer the connected LSP MCP tools for definitions, references, types, and diagnostics.
+Use absolute file paths and 1-indexed line/column positions. File tools auto-start
+language servers. Preview rename, formatting, and code actions before applying edits.
+After editing, query lsp_diagnostics; also run the project's build and tests.
 ```
 
 ## Configuration with Claude Code
@@ -290,7 +348,7 @@ This ensures Claude Code will:
 
 ### 5. Install the LLM Usage Skill (Recommended)
 
-This repository ships a [`SKILL.md`](./SKILL.md) — a self-contained, LLM-facing guide that teaches an assistant how to choose between the 29 `lsp_*` tools, what their gotchas are, and what canonical workflows look like. Installing it as a Claude Code skill lets the model load that guidance on demand instead of needing it pasted into every prompt.
+This repository ships a [`SKILL.md`](./SKILL.md) — a self-contained, LLM-facing guide that teaches an assistant how to choose between the 29 `lsp_*` tools, what their gotchas are, and what canonical workflows look like. It works with Codex and Claude Code; see [Configuration with Codex](#configuration-with-codex) for Codex installation. Installing it as a skill lets the model load that guidance on demand instead of needing it pasted into every prompt.
 
 **Why install it in addition to the CLAUDE.md snippet above?**
 The CLAUDE.md snippet enforces *that* LSP tools are used. `SKILL.md` teaches *how* to use them well — decision tree, workflows, gotchas, output shapes, error codes. The two complement each other.
@@ -1079,7 +1137,7 @@ lsp-mcp-server includes several security measures:
 - **File Size Limits** - Files larger than 10 MB are rejected to prevent memory exhaustion
 - **No Shell Execution** - Language servers are spawned with `shell: false` to prevent command injection
 
-## Usage Examples with Claude Code
+## Usage Examples with Codex or Claude Code
 
 ### Basic Navigation
 
@@ -1242,7 +1300,10 @@ npm run typecheck    # Type-check only
 ```bash
 npm test             # Run unit tests
 npm run test:watch   # Watch mode
+npm run test:integration  # Build, then test the executable over MCP stdio
 ```
+
+The integration suite verifies initialization, tool discovery, results and errors, automatic language-server startup, and disk-edit synchronization using local fixture servers. It exercises clients identifying as Codex and Claude Code without requiring either client or an external language-server installation.
 
 ### Interactive Testing
 

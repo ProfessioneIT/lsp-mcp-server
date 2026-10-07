@@ -1,7 +1,7 @@
 {
   "name": "lsp-mcp-server",
   "version": "1.1.25",
-  "description": "MCP server bridging Claude Code to Language Server Protocol servers",
+  "description": "MCP server bridging Codex, Claude Code, and other MCP clients to Language Server Protocol servers",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "README.md",
+    "SKILL.md",
     "LICENSE"
   ],
   "repository": {
@@ -27,7 +28,7 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
     "test:acceptance": "vitest run --config vitest.acceptance.config.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
@@ -56,6 +57,7 @@
     "lsp",
     "language-server",
     "claude",
+    "codex",
     "code-intelligence"
   ],
   "license": "MIT"

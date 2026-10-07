@@ -13,6 +13,7 @@ npm run build          # Compile TypeScript (src/ -> dist/)
 npm run dev            # tsc --watch
 npm test               # Unit tests (vitest, tests/unit/**/*.test.ts)
 npm run test:watch
+npm run test:integration # Build and test the executable over MCP stdio
 npm run typecheck      # tsc --noEmit
 npm run lint           # ESLint on src/ only
 npm run lint:fix
@@ -24,11 +25,11 @@ npm test -- -t "converts 1-indexed"       # Tests matching a name
 npx @modelcontextprotocol/inspector node dist/index.js   # Interactive MCP testing
 ```
 
-`npm run test:integration` points at `vitest.integration.config.ts`, which does not exist yet, and `tests/integration/` is empty.
+`tests/integration/` exercises the compiled MCP executable with clients identifying as Codex and Claude Code, using local LSP fixtures. Run `npm run test:integration` to build and execute it without external language servers or API credentials. Codex setup is documented in `README.md`.
 
 ## Release
 
-Every push to `main` triggers `.forgejo/workflows/publish.yml`: `npm test`, `npm run typecheck`, `npm run build`, then an automatic patch bump, a `vX.Y.Z` tag, a `chore: bump version ... [skip ci]` commit, and `npm publish`. Do not bump the version manually. Lint is not run in CI, so run it locally.
+Every push to `main` triggers `.forgejo/workflows/publish.yml`: `npm test`, `npm run typecheck`, `npm run test:integration` (including the build), then an automatic patch bump, a `vX.Y.Z` tag, a `chore: bump version ... [skip ci]` commit, and `npm publish`. Do not bump the version manually. Lint is not run in CI, so run it locally.
 
 ## Architecture
 

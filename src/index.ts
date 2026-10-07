@@ -904,11 +904,15 @@ async function main() {
         tools: {},
       },
       instructions: [
+        // Codex uses the first 512 characters when selecting tools. Keep this
+        // opening paragraph self-contained, including write previews.
+        'Prefer lsp_* tools for semantic navigation, references, types, and diagnostics. Use absolute file paths and 1-indexed line/column positions. File tools auto-start language servers by default; lsp_server_status is optional. Preview edits with lsp_rename dry_run=true, lsp_format_document apply=false, and lsp_code_actions apply=false. Call lsp_index_files before lsp_workspace_diagnostics to open relevant files. Run project tests separately to validate behavior.',
+        '',
         'This server provides semantic code intelligence via Language Server Protocol (LSP).',
         '',
         '## Getting Started',
-        '1. Call `lsp_server_status` to check which language servers are running.',
-        '2. If the relevant server is not running, it will auto-start on the first tool call for a file in that language. Use `lsp_start_server` only if you need explicit control.',
+        'File tools auto-start the relevant language server unless autoStart is disabled. No preliminary status call is needed.',
+        'Use `lsp_server_status` to troubleshoot, and `lsp_start_server` only for explicit control or when autoStart is disabled.',
         '',
         '## When to Use These Tools',
         'Prefer LSP tools over text-based search (grep/find) for code navigation:',
@@ -917,7 +921,7 @@ async function main() {
         '- **Understand types**: `lsp_hover` instead of reading source to infer types.',
         '- **File structure**: `lsp_document_symbols` instead of reading an entire file.',
         '- **Find by name**: `lsp_workspace_symbols` or `lsp_find_symbol` when you know a symbol name but not its location.',
-        '- **Check errors**: `lsp_diagnostics` / `lsp_workspace_diagnostics` instead of running the compiler manually.',
+        '- **Check errors**: `lsp_diagnostics` / `lsp_workspace_diagnostics` for quick feedback. Also run the project\'s build and tests when validating changes.',
         '- **Explore inheritance**: `lsp_find_implementations`, `lsp_type_hierarchy`.',
         '- **Trace call flow**: `lsp_call_hierarchy`.',
         '',
@@ -930,7 +934,9 @@ async function main() {
         '## Key Conventions',
         '- All line/column numbers are **1-indexed**.',
         '- All file paths must be **absolute**.',
-        '- Diagnostics are push-based: open a file (via any tool that takes `file_path`) to trigger diagnostic collection, then query with `lsp_diagnostics`.',
+        '- Diagnostics combine server notifications and pull requests when supported. Open relevant files with `lsp_index_files` before requesting workspace diagnostics.',
+        '- Tools refresh documents from disk, including edits made by Codex, Claude Code, or another editor. Use `lsp_diagnostics` after editing a file.',
+        '- Preview rename, formatting, and code actions before applying edits. File modifications must stay within the detected workspace.',
       ].join('\n'),
     }
   );
