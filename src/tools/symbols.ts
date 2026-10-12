@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import * as path from 'node:path';
 import type { DocumentSymbol, SymbolInformation } from 'vscode-languageserver-protocol';
 import type { DocumentSymbolsInput, WorkspaceSymbolsInput, FileExportsInput, FileImportsInput, RelatedFilesInput } from '../schemas/tool-schemas.js';
 import type { DocumentSymbolsResponse, WorkspaceSymbolsResponse, SymbolResult, WorkspaceSymbolResult, FileExportsResponse, FileExportItem, FileImportsResponse, FileImportItem, RelatedFilesResponse } from '../types.js';
@@ -299,51 +300,81 @@ export async function handleFileExports(
 }
 
 /**
+ * Parse a `{ x, y as z }` clause into ['x', 'y'].
+ */
+function parseImportSymbols(symbolsStr: string): string[] {
+  return symbolsStr
+    .replace(/[{}]/g, '')
+    .split(',')
+    .map(s => s.trim().split(/\s+as\s+/)[0]!.trim())
+    .filter(s => s.length > 0);
+}
+
+/**
  * Extract imports from file content using regex patterns.
- * Supports ES modules (import), CommonJS (require), and TypeScript type imports.
+ * Supports ES modules (import, including statements split over several lines),
+ * re-exports (export ... from), CommonJS (require), and TypeScript type imports.
  */
 function extractImportsFromContent(content: string): FileImportItem[] {
   const imports: FileImportItem[] = [];
+  const lineAt = (index: number): number => content.slice(0, index).split('\n').length;
+
+  // ES module: import { x, y } from 'module' (the braces may span several lines)
+  // ES module: import x from 'module'
+  // ES module: import * as x from 'module'
+  // ES module: import 'module'
+  const esImportRegex = /^[ \t]*import\s+(type\s+)?(?:(?:(\{[^}]*\})|(\*\s+as\s+\w+)|(\w+)(?:\s*,\s*(?:(\{[^}]*\})|(\*\s+as\s+\w+)))?)\s*from\s*)?['"]([^'"]+)['"]/gm;
+  for (const match of content.matchAll(esImportRegex)) {
+    const item: FileImportItem = {
+      module: match[7]!,
+      line: lineAt(match.index),
+    };
+
+    const symbolsStr = match[2] || match[5]; // Named imports
+    if (symbolsStr) {
+      const symbols = parseImportSymbols(symbolsStr);
+      if (symbols.length > 0) {
+        item.symbols = symbols;
+      }
+    }
+
+    if (match[1]) {
+      item.is_type_only = true;
+    }
+
+    imports.push(item);
+  }
+
+  // Re-export: export { x, y } from 'module', export * from 'module', export * as x from 'module'
+  const reExportRegex = /^[ \t]*export\s+(type\s+)?(?:(\{[^}]*\})|\*(?:\s+as\s+\w+)?)\s*from\s*['"]([^'"]+)['"]/gm;
+  for (const match of content.matchAll(reExportRegex)) {
+    const item: FileImportItem = {
+      module: match[3]!,
+      line: lineAt(match.index),
+    };
+
+    if (match[2]) {
+      const symbols = parseImportSymbols(match[2]);
+      if (symbols.length > 0) {
+        item.symbols = symbols;
+      }
+    }
+
+    if (match[1]) {
+      item.is_type_only = true;
+    }
+
+    imports.push(item);
+  }
+
+  const staticLines = new Set(imports.map(imp => imp.line));
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const lineNum = i + 1;
 
-    // ES module: import { x, y } from 'module'
-    // ES module: import x from 'module'
-    // ES module: import * as x from 'module'
-    // ES module: import 'module'
-    const esImportMatch = line.match(/^\s*import\s+(?:type\s+)?(?:(\{[^}]+\})|(\*\s+as\s+\w+)|(\w+)(?:\s*,\s*(?:(\{[^}]+\})|(\*\s+as\s+\w+)))?)?\s*(?:from\s+)?['"]([^'"]+)['"]/);
-    if (esImportMatch) {
-      const modulePath = esImportMatch[6]!;
-      const isTypeOnly = line.includes('import type');
-      const symbolsStr = esImportMatch[1] || esImportMatch[4]; // Named imports
-
-      const item: FileImportItem = {
-        module: modulePath,
-        line: lineNum,
-      };
-
-      if (symbolsStr) {
-        // Parse { x, y as z } into ['x', 'y']
-        const symbols = symbolsStr
-          .replace(/[{}]/g, '')
-          .split(',')
-          .map(s => s.trim().split(/\s+as\s+/)[0]!.trim())
-          .filter(s => s.length > 0);
-        if (symbols.length > 0) {
-          item.symbols = symbols;
-        }
-      }
-
-      if (isTypeOnly) {
-        item.is_type_only = true;
-      }
-
-      imports.push(item);
-      continue;
-    }
+    if (staticLines.has(lineNum)) continue;
 
     // Dynamic import: import('module')
     const dynamicImportMatch = line.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
@@ -366,7 +397,23 @@ function extractImportsFromContent(content: string): FileImportItem[] {
     }
   }
 
-  return imports;
+  return imports.sort((a, b) => a.line - b.line);
+}
+
+/**
+ * Check whether an import specifier written in `importerPath` refers to `targetPath`.
+ * Only relative and absolute specifiers can point at a local file; extensions are
+ * optional, and a directory specifier refers to its index file.
+ */
+function importResolvesTo(importerPath: string, specifier: string, targetPath: string): boolean {
+  if (!specifier.startsWith('.') && !path.isAbsolute(specifier)) return false;
+
+  const stripExt = (p: string): string => p.replace(/\.(ts|tsx|js|jsx)$/, '');
+  const resolved = path.resolve(path.dirname(importerPath), specifier);
+  const target = stripExt(path.resolve(targetPath));
+
+  if (stripExt(resolved) === target) return true;
+  return path.basename(target) === 'index' && resolved === path.dirname(target);
 }
 
 /**
@@ -385,7 +432,7 @@ export async function handleFileImports(
   return {
     file: file_path,
     imports,
-    note: 'Imports extracted from file content using pattern matching. Supports ES modules, CommonJS require(), and dynamic imports.',
+    note: 'Imports extracted from file content using pattern matching. Supports ES modules, re-exports (export ... from), CommonJS require(), and dynamic imports.',
   };
 }
 
@@ -432,12 +479,7 @@ export async function handleRelatedFiles(
       const otherImports = extractImportsFromContent(otherContent);
 
       // Check if any import points to our file
-      const importsSelf = otherImports.some(imp => {
-        // Simple check: does the import path end with our filename?
-        const targetName = file_path.split('/').pop()?.replace(/\.(ts|tsx|js|jsx)$/, '');
-        if (!targetName) return false;
-        return imp.module.includes(targetName);
-      });
+      const importsSelf = otherImports.some(imp => importResolvesTo(otherPath, imp.module, file_path));
 
       if (importsSelf) {
         result.imported_by.push(otherPath);

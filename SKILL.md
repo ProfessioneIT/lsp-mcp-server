@@ -176,7 +176,7 @@ Each highlight has `kind: "read" | "write" | "text"`. Faster and more focused th
    It is regex-based and limited to JS/TS-shaped import syntax. For other languages or for "everything that imports X", do `lsp_find_references` on the export instead — that uses the real LSP index and is language-correct. (Or `lsp_index_files` the candidate set first.)
 
 3. **`lsp_file_imports` is regex-based, JS/TS-flavored.**
-   It recognises `import …`, dynamic `import('…')`, and `require('…')`. It will not catch Python/Go/Rust import idioms accurately. For non-JS languages, `lsp_document_symbols` plus your own knowledge of the language is more reliable.
+   It recognises `import …` (including multi-line imports), `export … from '…'` re-exports, dynamic `import('…')`, and `require('…')`. It will not catch Python/Go/Rust import idioms accurately. For non-JS languages, `lsp_document_symbols` plus your own knowledge of the language is more reliable.
 
 4. **`lsp_call_hierarchy` / `lsp_type_hierarchy` need a callable / class-like position.**
    Pointing at a variable will throw `CAPABILITY_NOT_SUPPORTED`. Point at the function name itself, or use `lsp_smart_search` which fails silently. Some servers have no type hierarchy at all: for TypeScript, `lsp_type_hierarchy` always returns `CAPABILITY_NOT_SUPPORTED`, so use `lsp_find_implementations` or `lsp_find_references` on the class or interface instead.
