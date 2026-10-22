@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import { stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { DocumentSymbol, SymbolInformation } from 'vscode-languageserver-protocol';
 import type { DocumentSymbolsInput, WorkspaceSymbolsInput, FileExportsInput, FileImportsInput, RelatedFilesInput } from '../schemas/tool-schemas.js';
@@ -317,13 +318,14 @@ function parseImportSymbols(symbolsStr: string): string[] {
  */
 function extractImportsFromContent(content: string): FileImportItem[] {
   const imports: FileImportItem[] = [];
+  const importLines = new Set<number>();
   const lineAt = (index: number): number => content.slice(0, index).split('\n').length;
 
   // ES module: import { x, y } from 'module' (the braces may span several lines)
   // ES module: import x from 'module'
   // ES module: import * as x from 'module'
   // ES module: import 'module'
-  const esImportRegex = /^[ \t]*import\s+(type\s+)?(?:(?:(\{[^}]*\})|(\*\s+as\s+\w+)|(\w+)(?:\s*,\s*(?:(\{[^}]*\})|(\*\s+as\s+\w+)))?)\s*from\s*)?['"]([^'"]+)['"]/gm;
+  const esImportRegex = /^[^\S\r\n]*import\s+(type\s+)?(?:(?:(\{[^}]*\})|(\*\s+as\s+\w+)|(\w+)(?:\s*,\s*(?:(\{[^}]*\})|(\*\s+as\s+\w+)))?)\s*from\s*)?['"]([^'"]+)['"]/gm;
   for (const match of content.matchAll(esImportRegex)) {
     const item: FileImportItem = {
       module: match[7]!,
@@ -343,10 +345,11 @@ function extractImportsFromContent(content: string): FileImportItem[] {
     }
 
     imports.push(item);
+    importLines.add(item.line);
   }
 
   // Re-export: export { x, y } from 'module', export * from 'module', export * as x from 'module'
-  const reExportRegex = /^[ \t]*export\s+(type\s+)?(?:(\{[^}]*\})|\*(?:\s+as\s+\w+)?)\s*from\s*['"]([^'"]+)['"]/gm;
+  const reExportRegex = /^[^\S\r\n]*export\s+(type\s+)?(?:(\{[^}]*\})|\*(?:\s+as\s+\w+)?)\s*from\s*['"]([^'"]+)['"]/gm;
   for (const match of content.matchAll(reExportRegex)) {
     const item: FileImportItem = {
       module: match[3]!,
@@ -367,14 +370,14 @@ function extractImportsFromContent(content: string): FileImportItem[] {
     imports.push(item);
   }
 
-  const staticLines = new Set(imports.map(imp => imp.line));
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const lineNum = i + 1;
 
-    if (staticLines.has(lineNum)) continue;
+    // Re-export lines may also contain dynamic imports or require() calls.
+    if (importLines.has(lineNum)) continue;
 
     // Dynamic import: import('module')
     const dynamicImportMatch = line.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
@@ -405,15 +408,27 @@ function extractImportsFromContent(content: string): FileImportItem[] {
  * Only relative and absolute specifiers can point at a local file; extensions are
  * optional, and a directory specifier refers to its index file.
  */
-function importResolvesTo(importerPath: string, specifier: string, targetPath: string): boolean {
+async function importResolvesTo(importerPath: string, specifier: string, targetPath: string): Promise<boolean> {
   if (!specifier.startsWith('.') && !path.isAbsolute(specifier)) return false;
 
   const stripExt = (p: string): string => p.replace(/\.(ts|tsx|js|jsx)$/, '');
   const resolved = path.resolve(path.dirname(importerPath), specifier);
   const target = stripExt(path.resolve(targetPath));
+  const isDirectorySpecifier = /(?:[\\/]|(?:^|[\\/])\.{1,2})$/.test(specifier);
 
-  if (stripExt(resolved) === target) return true;
-  return path.basename(target) === 'index' && resolved === path.dirname(target);
+  if (!isDirectorySpecifier && stripExt(resolved) === target) return true;
+  if (path.basename(target) !== 'index' || resolved !== path.dirname(target)) return false;
+  if (isDirectorySpecifier) return true;
+
+  // File resolution takes precedence over a directory's index file.
+  const fileMatches = await Promise.all(['', '.ts', '.tsx', '.js', '.jsx'].map(async extension => {
+    try {
+      return (await stat(`${resolved}${extension}`)).isFile();
+    } catch {
+      return false;
+    }
+  }));
+  return !fileMatches.some(Boolean);
 }
 
 /**
@@ -479,7 +494,9 @@ export async function handleRelatedFiles(
       const otherImports = extractImportsFromContent(otherContent);
 
       // Check if any import points to our file
-      const importsSelf = otherImports.some(imp => importResolvesTo(otherPath, imp.module, file_path));
+      const importsSelf = (await Promise.all(
+        otherImports.map(imp => importResolvesTo(otherPath, imp.module, file_path))
+      )).some(Boolean);
 
       if (importsSelf) {
         result.imported_by.push(otherPath);

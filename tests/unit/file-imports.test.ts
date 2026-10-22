@@ -116,4 +116,65 @@ describe('import analysis', () => {
     const result = await handleRelatedFiles({ file_path: p('src/a.ts'), relationship: 'imported_by' });
     expect(result.imported_by).toEqual([p('src/app.ts')]);
   });
+
+  it.each(['\uFEFF', '\u00A0'])('reads imports after Unicode whitespace %j', async (prefix) => {
+    const filePath = p('src/whitespace.ts');
+    fs.writeFileSync(filePath, `${prefix}import { helper } from "./utils";\n`);
+
+    const result = await handleFileImports({ file_path: filePath });
+    expect(result.imports).toEqual([
+      { module: './utils', line: 1, symbols: ['helper'] },
+    ]);
+    expect((await handleRelatedFiles({ file_path: filePath, relationship: 'imports' })).imports)
+      .toEqual(['./utils']);
+  });
+
+  it('reads re-exports after a UTF-8 BOM without shifting line numbers', async () => {
+    const filePath = p('src/bom-export.ts');
+    fs.writeFileSync(filePath, '\uFEFFexport { A } from "./a";\nexport * from "./lib";\n');
+
+    const result = await handleFileImports({ file_path: filePath });
+    expect(result.imports).toEqual([
+      { module: './a', line: 1, symbols: ['A'] },
+      { module: './lib', line: 2 },
+    ]);
+  });
+
+  it.each(['.ts', '.tsx', '.js', '.jsx'])('prefers a sibling %s file over a directory index', async (extension) => {
+    fs.writeFileSync(p(`src/lib${extension}`), 'export const L = 2;\n');
+
+    const index = await handleRelatedFiles({ file_path: p('src/lib/index.ts'), relationship: 'imported_by' });
+    expect(index.imported_by).toEqual([]);
+    const sibling = await handleRelatedFiles({ file_path: p(`src/lib${extension}`), relationship: 'imported_by' });
+    expect(sibling.imported_by).toEqual([p('src/app.ts')]);
+  });
+
+  it.each(['./lib/', './lib/.'])('keeps explicit directory imports pointed at the index: %s', async (specifier) => {
+    fs.writeFileSync(p('src/lib.ts'), 'export const L = 2;\n');
+    const importer = p('src/directory-import.ts');
+    fs.writeFileSync(importer, `export * from "${specifier}";\n`);
+    await handleFileImports({ file_path: importer });
+    diagnosticsCache.update(pathToUri(importer), []);
+
+    const index = await handleRelatedFiles({ file_path: p('src/lib/index.ts'), relationship: 'imported_by' });
+    expect(index.imported_by).toEqual([importer]);
+    const sibling = await handleRelatedFiles({ file_path: p('src/lib.ts'), relationship: 'imported_by' });
+    expect(sibling.imported_by).toEqual([p('src/app.ts')]);
+  });
+
+  it.each([
+    ['require("./utils")', { module: './utils', line: 1 }],
+    ['import("./utils")', { module: './utils', line: 1, is_dynamic: true }],
+  ])('keeps dependencies following a re-export: %s', async (expression, dependency) => {
+    const filePath = p('src/re-export-and-load.ts');
+    fs.writeFileSync(filePath, `export { A } from "./a"; const loaded = ${expression};\n`);
+
+    const result = await handleFileImports({ file_path: filePath });
+    expect(result.imports).toEqual([
+      { module: './a', line: 1, symbols: ['A'] },
+      dependency,
+    ]);
+    expect((await handleRelatedFiles({ file_path: filePath, relationship: 'imports' })).imports)
+      .toEqual(['./a', './utils']);
+  });
 });
