@@ -195,6 +195,7 @@ export interface LSPClient {
 
   // Code Actions
   codeActions(uri: string, range: Range, diagnostics: Diagnostic[], kinds?: string[]): Promise<(CodeAction | Command)[] | null>;
+  resolveCodeAction(action: CodeAction): Promise<CodeAction>;
 
   // Call Hierarchy
   prepareCallHierarchy(uri: string, position: Position): Promise<CallHierarchyItem[] | null>;
