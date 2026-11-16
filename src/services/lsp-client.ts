@@ -45,6 +45,7 @@ import {
   RenameRequest,
   PublishDiagnosticsNotification,
   CodeActionRequest,
+  CodeActionResolveRequest,
   DocumentFormattingRequest,
   CallHierarchyPrepareRequest,
   CallHierarchyIncomingCallsRequest,
@@ -752,6 +753,10 @@ export class LSPClientImpl implements ILSPClient {
       },
     };
     return this.sendRequest(CodeActionRequest.type, params);
+  }
+
+  async resolveCodeAction(action: CodeAction): Promise<CodeAction> {
+    return this.sendRequest(CodeActionResolveRequest.type, action);
   }
 
   // ============================================================================
