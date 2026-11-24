@@ -41,7 +41,10 @@ export async function prepareFile(filePath: string): Promise<{
   touchedAt: number | null;
 }> {
   const ctx = getToolContext();
-  const absolutePath = ensureAbsolute(filePath);
+  const requested = ensureAbsolute(filePath);
+  // rust-analyzer decides crate membership from the real path: a symlinked
+  // spelling can look outside the workspace and lose most assists.
+  const absolutePath = fs.existsSync(requested) ? fs.realpathSync(requested) : requested;
   const uri = pathToUri(absolutePath);
 
   // A deleted file may still be open and cached; drop that state instead of

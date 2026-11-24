@@ -770,6 +770,8 @@ Output:
 #### `lsp_code_actions`
 Get available code actions (refactorings, quick fixes) at a position or range, and optionally apply them.
 
+Actions the server only completes on request (`codeAction/resolve`, such as rust-analyzer's extract family) are resolved before being applied, so `apply` works for them too.
+
 ```
 Input:
   - file_path: Absolute path to the source file

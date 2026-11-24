@@ -224,7 +224,15 @@ export async function handleCodeActions(
       );
     }
 
-    const actionToApply = result[indexToApply]!; // Safe: bounds checked above
+    let actionToApply = result[indexToApply]!; // Safe: bounds checked above
+
+    // Lazy actions (rust-analyzer's extract family among them) come back with
+    // data but no edit; the edit only exists after codeAction/resolve.
+    if (isCodeAction(actionToApply) && !actionToApply.edit && 'data' in actionToApply) {
+      const resolved = await client.resolveCodeAction(actionToApply);
+      result[indexToApply] = resolved;
+      actionToApply = resolved;
+    }
 
     if (isCodeAction(actionToApply) && actionToApply.edit) {
       await applyWorkspaceEdit(actionToApply.edit, client.workspaceRoot);
