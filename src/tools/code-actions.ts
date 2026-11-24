@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import type { CodeAction, Command, WorkspaceEdit, TextEdit, MarkupContent } from 'vscode-languageserver-protocol';
+import type { CodeAction, Command, WorkspaceEdit, TextEdit, MarkupContent, ServerCapabilities } from 'vscode-languageserver-protocol';
 import type { CodeActionsInput } from '../schemas/tool-schemas.js';
 import type { CodeActionsResponse, CodeActionResult, DiagnosticResult } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
@@ -35,6 +35,14 @@ import { collectTextEdits } from '../utils/workspace-edit.js';
  */
 function isCodeAction(action: CodeAction | Command): action is CodeAction {
   return 'kind' in action || 'edit' in action || 'diagnostics' in action;
+}
+
+/**
+ * Check whether the server answers codeAction/resolve.
+ */
+function supportsCodeActionResolve(capabilities: ServerCapabilities): boolean {
+  const provider = capabilities.codeActionProvider;
+  return typeof provider === 'object' && provider.resolveProvider === true;
 }
 
 /**
@@ -228,10 +236,18 @@ export async function handleCodeActions(
 
     // Lazy actions (rust-analyzer's extract family among them) come back with
     // data but no edit; the edit only exists after codeAction/resolve.
-    if (isCodeAction(actionToApply) && !actionToApply.edit && 'data' in actionToApply) {
+    if (
+      isCodeAction(actionToApply) &&
+      !actionToApply.edit &&
+      'data' in actionToApply &&
+      supportsCodeActionResolve(client.capabilities)
+    ) {
       const resolved = await client.resolveCodeAction(actionToApply);
-      result[indexToApply] = resolved;
-      actionToApply = resolved;
+      // A server answering null leaves the action unresolved: no edit to apply
+      if (resolved) {
+        result[indexToApply] = resolved;
+        actionToApply = resolved;
+      }
     }
 
     if (isCodeAction(actionToApply) && actionToApply.edit) {

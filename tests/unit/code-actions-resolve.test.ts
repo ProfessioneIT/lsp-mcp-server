@@ -24,7 +24,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { CodeAction } from 'vscode-languageserver-protocol';
+import type { CodeAction, ServerCapabilities } from 'vscode-languageserver-protocol';
 import { setToolContext } from '../../src/tools/context.js';
 import { handleCodeActions } from '../../src/tools/code-actions.js';
 import { pathToUri } from '../../src/utils/uri.js';
@@ -53,9 +53,13 @@ describe('handleCodeActions resolve step', () => {
     },
   });
 
-  function setup(actions: CodeAction[], resolved: () => CodeAction) {
+  function setup(
+    actions: CodeAction[],
+    resolved: () => CodeAction | null,
+    codeActionProvider: ServerCapabilities['codeActionProvider'] = { resolveProvider: true }
+  ) {
     const client = createFakeLspClient(dir, {
-      capabilities: { codeActionProvider: true },
+      capabilities: { codeActionProvider },
       codeActions: vi.fn(async () => actions),
       resolveCodeAction: vi.fn(async () => resolved()),
     });
@@ -104,6 +108,25 @@ describe('handleCodeActions resolve step', () => {
 
   it('still refuses an action the server resolves without an edit', async () => {
     setup([lazyAction], () => lazyAction);
+
+    await expect(handleCodeActions(input())).rejects.toMatchObject({
+      code: LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+    });
+    expect(fs.readFileSync(file, 'utf-8')).toBe('let a = 1;\nlet b = 2;\n');
+  });
+
+  it('refuses, without resolving, when the server does not provide codeAction/resolve', async () => {
+    const client = setup([lazyAction], () => ({ ...lazyAction, edit: edit() }), true);
+
+    await expect(handleCodeActions(input())).rejects.toMatchObject({
+      code: LSPErrorCode.CAPABILITY_NOT_SUPPORTED,
+    });
+    expect(client.resolveCodeAction).not.toHaveBeenCalled();
+    expect(fs.readFileSync(file, 'utf-8')).toBe('let a = 1;\nlet b = 2;\n');
+  });
+
+  it('refuses an action the server resolves to null', async () => {
+    setup([lazyAction], () => null);
 
     await expect(handleCodeActions(input())).rejects.toMatchObject({
       code: LSPErrorCode.CAPABILITY_NOT_SUPPORTED,

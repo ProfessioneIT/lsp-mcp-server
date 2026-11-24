@@ -755,7 +755,7 @@ export class LSPClientImpl implements ILSPClient {
     return this.sendRequest(CodeActionRequest.type, params);
   }
 
-  async resolveCodeAction(action: CodeAction): Promise<CodeAction> {
+  async resolveCodeAction(action: CodeAction): Promise<CodeAction | null> {
     return this.sendRequest(CodeActionResolveRequest.type, action);
   }
 

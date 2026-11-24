@@ -25,7 +25,7 @@ import type { Diagnostic, Location, LocationLink, MarkupContent } from 'vscode-l
 import type { LocationResult, LSPClient } from '../types.js';
 import { LSPError, LSPErrorCode } from '../types.js';
 import { logger } from '../utils/logger.js';
-import { uriToPath, readFile, pathToUri, ensureAbsolute } from '../utils/uri.js';
+import { uriToPath, readFile, pathToUri, canonicalFilePath } from '../utils/uri.js';
 import { fromLspRange, getLineContent, toLspPosition } from '../utils/position.js';
 import { SYMBOL_KIND_NAMES, COMPLETION_KIND_NAMES, DIAGNOSTIC_SEVERITY_NAMES, SERVER_WORK_SETTLE_MS, SERVER_WORK_MAX_WAIT_MS, DIAGNOSTICS_WAIT_MS } from '../constants.js';
 import { getToolContext } from './context.js';
@@ -41,10 +41,10 @@ export async function prepareFile(filePath: string): Promise<{
   touchedAt: number | null;
 }> {
   const ctx = getToolContext();
-  const requested = ensureAbsolute(filePath);
   // rust-analyzer decides crate membership from the real path: a symlinked
-  // spelling can look outside the workspace and lose most assists.
-  const absolutePath = fs.existsSync(requested) ? fs.realpathSync(requested) : requested;
+  // spelling can look outside the workspace and lose most assists. Anything
+  // compared with open documents must be canonicalised the same way.
+  const absolutePath = canonicalFilePath(filePath);
   const uri = pathToUri(absolutePath);
 
   // A deleted file may still be open and cached; drop that state instead of

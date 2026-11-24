@@ -28,7 +28,7 @@ import type { DocumentSymbolsResponse, WorkspaceSymbolsResponse, SymbolResult, W
 import { prepareFile, getSymbolKindName, matchesSymbolKind, toPosition } from './utils.js';
 import { getToolContext } from './context.js';
 import { fromLspRange } from '../utils/position.js';
-import { uriToPath } from '../utils/uri.js';
+import { uriToPath, canonicalFilePath } from '../utils/uri.js';
 
 /**
  * Check if symbol is DocumentSymbol (has children and range).
@@ -483,10 +483,12 @@ export async function handleRelatedFiles(
   if (relationship === 'imported_by' || relationship === 'all') {
     // Get all cached URIs from diagnostics (these are files we've opened)
     const openedUris = ctx.diagnosticsCache.getUris();
+    // Opened documents are keyed by their real path
+    const target = canonicalFilePath(file_path);
 
     for (const uri of openedUris) {
       const otherPath = uriToPath(uri);
-      if (otherPath === file_path) continue;
+      if (otherPath === target) continue;
 
       const otherContent = ctx.documentManager.getContent(uri);
       if (!otherContent) continue;
@@ -495,7 +497,7 @@ export async function handleRelatedFiles(
 
       // Check if any import points to our file
       const importsSelf = (await Promise.all(
-        otherImports.map(imp => importResolvesTo(otherPath, imp.module, file_path))
+        otherImports.map(imp => importResolvesTo(otherPath, imp.module, target))
       )).some(Boolean);
 
       if (importsSelf) {

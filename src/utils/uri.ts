@@ -342,6 +342,24 @@ export function ensureAbsolute(filePath: string): string {
 }
 
 /**
+ * Resolve a file path to the spelling its document is opened under.
+ *
+ * Symlinks are resolved, so `/tmp/x` and `/private/tmp/x` name one document.
+ * For a missing file the directory is resolved instead, so a file deleted
+ * after it was opened still maps to the URI it was opened under.
+ *
+ * @param filePath - File path, absolute or relative to cwd
+ * @returns Canonical absolute path
+ */
+export function canonicalFilePath(filePath: string): string {
+  const absolute = ensureAbsolute(filePath);
+  if (fs.existsSync(absolute)) {
+    return normalizePath(absolute);
+  }
+  return path.join(normalizePath(path.dirname(absolute)), path.basename(absolute));
+}
+
+/**
  * Get the relative path from one location to another.
  *
  * @param from - Starting path
