@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import type { ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as os from 'node:os';
 import { describe, it, expect, afterEach } from 'vitest';
@@ -107,6 +108,29 @@ describe('LSPClientImpl lifecycle', () => {
     await expect(manager.getClient('behavior-fixture', os.tmpdir())).rejects.toMatchObject({ code: LSPErrorCode.SERVER_TIMEOUT });
     expect(Date.now() - started).toBeLessThan(2000);
     await manager.shutdownAll();
+  });
+
+  it('does not reject unhandled when a notification cannot be written', async () => {
+    client = fixtureClient('loading', 5000, { FIXTURE_NO_LOAD: 'true' });
+    await client.initialize(os.tmpdir());
+    const rejections: unknown[] = [];
+    const record = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', record);
+    try {
+      // The server's stdin is gone, as right after the server exits, before
+      // the connection notices. Writes then fail asynchronously.
+      (client as unknown as { process: ChildProcess }).process.stdin!.destroy();
+      const uri = 'file:///tmp/project/a.fixture';
+      client.didOpen({ uri, languageId: 'fixture', version: 1, text: 'x' });
+      client.didChange(uri, 2, [{ text: 'y' }]);
+      client.exit();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } finally {
+      process.off('unhandledRejection', record);
+    }
+    expect(rejections).toEqual([]);
   });
 
   it('waits for diagnostics published after a change', async () => {

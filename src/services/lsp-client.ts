@@ -124,7 +124,8 @@ interface MessageConnection extends WorkspaceConfigurationConnection {
   listen(): void;
   dispose(): void;
   sendRequest(type: unknown, params: unknown, token?: unknown): Promise<unknown>;
-  sendNotification(type: unknown, params?: unknown): void;
+  /** Throws if the connection is closed; rejects if the write fails */
+  sendNotification(type: unknown, params?: unknown): Promise<void>;
   onNotification(type: unknown, handler: (params: unknown) => void): void;
   onNotification(handler: (method: string, params: unknown) => void): void;
   onRequest(type: unknown, handler: (params: never) => unknown): unknown;
@@ -405,7 +406,7 @@ export class LSPClientImpl implements ILSPClient {
       this._isInitialized = true;
 
       // Send initialized notification
-      this.connection.sendNotification(InitializedNotification.type, {});
+      this.notify(InitializedNotification.type, {});
 
       logger.info(`Language server initialized: ${this.config.id}`, {
         rootUri,
@@ -455,12 +456,26 @@ export class LSPClientImpl implements ILSPClient {
   exit(): void {
     if (this.connection) {
       try {
-        this.connection.sendNotification(ExitNotification.type);
+        this.notify(ExitNotification.type);
       } catch {
         // Ignore errors during exit
       }
     }
     this.cleanup();
+  }
+
+  /**
+   * Send a notification without waiting for it to be written.
+   *
+   * vscode-jsonrpc writes asynchronously and rejects when the server's stdin is
+   * gone, as right after the server exits. Unhandled, that rejection ends this
+   * process, so it is logged instead; the exit itself is reported separately.
+   * A connection already known to be closed still throws synchronously.
+   */
+  private notify(type: unknown, params?: unknown): void {
+    this.connection!.sendNotification(type, params).catch((error: unknown) => {
+      logger.debug(`Notification not delivered: ${this.config.id}`, error);
+    });
   }
 
   // ============================================================================
@@ -469,7 +484,7 @@ export class LSPClientImpl implements ILSPClient {
 
   didOpen(document: TextDocumentItem): void {
     this.ensureConnection();
-    this.connection!.sendNotification(DidOpenTextDocumentNotification.type, {
+    this.notify(DidOpenTextDocumentNotification.type, {
       textDocument: document,
     });
   }
@@ -484,12 +499,12 @@ export class LSPClientImpl implements ILSPClient {
       textDocument: { uri, version } as VersionedTextDocumentIdentifier,
       contentChanges: changes,
     };
-    this.connection!.sendNotification(DidChangeTextDocumentNotification.type, params);
+    this.notify(DidChangeTextDocumentNotification.type, params);
   }
 
   didClose(uri: string): void {
     this.ensureConnection();
-    this.connection!.sendNotification(DidCloseTextDocumentNotification.type, {
+    this.notify(DidCloseTextDocumentNotification.type, {
       textDocument: { uri } as TextDocumentIdentifier,
     });
     // Clear cached diagnostics for this document
@@ -553,7 +568,7 @@ export class LSPClientImpl implements ILSPClient {
 
   didSave(uri: string): void {
     this.ensureConnection();
-    this.connection!.sendNotification(DidSaveTextDocumentNotification.type, {
+    this.notify(DidSaveTextDocumentNotification.type, {
       textDocument: { uri } as TextDocumentIdentifier,
     });
   }
@@ -579,7 +594,7 @@ export class LSPClientImpl implements ILSPClient {
       return;
     }
     this.ensureConnection();
-    this.connection!.sendNotification(DidDeleteFilesNotification.type, {
+    this.notify(DidDeleteFilesNotification.type, {
       files: uris.map((uri) => ({ uri })),
     });
     for (const uri of uris) {
